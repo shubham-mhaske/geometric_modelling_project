@@ -78,3 +78,8 @@ htmlcov/
 
 # Keep directory structure
 !.gitkeep
+
+# Experiments
+experiments/**/*.stl
+experiments/**/*.obj
+experiments/**/*.ply

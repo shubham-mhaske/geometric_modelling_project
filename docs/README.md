@@ -70,6 +70,23 @@ project/
 3. Process all files in `data/`
 4. Download CSV results
 
+### 🧪 Experiment Runner (CLI)
+For rigorous ablation studies and generating results for reports:
+
+```bash
+# Run full ablation study on all data
+python scripts/experiment_runner.py \
+  --data-dir ./data/labels \
+  --output-dir ./experiments/full_study \
+  --log-path ./experiments/full_study/results.csv
+
+# Run without saving mesh artifacts (CSV only)
+python scripts/experiment_runner.py \
+  --data-dir ./data/labels \
+  --log-path ./experiments/results.csv \
+  --no-artifacts
+```
+
 ## 📊 Algorithms
 
 **Laplacian Smoothing**: `v_new = (1-λ)v + λ·avg(neighbors)`

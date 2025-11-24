@@ -71,3 +71,20 @@ Plotly 3D Viewer:
 - Use ML optimizer if unsure about parameters
 - Enable Hausdorff to validate accuracy
 - Batch mode for dataset-wide analysis
+
+## 🔬 Advanced: Experiment Runner
+
+For generating comprehensive results for reports (Ablation Studies), use the CLI tool:
+
+```bash
+# Run on all files in data/labels
+python scripts/experiment_runner.py --data-dir ./data/labels --verbose
+
+# Run on specific files
+python scripts/experiment_runner.py --files ./data/sample.nii.gz
+
+# Options
+--no-artifacts    # Skip saving STL files (CSV only)
+--output-dir      # Where to save results (default: experiments/results)
+--log-path        # Path to CSV log
+```

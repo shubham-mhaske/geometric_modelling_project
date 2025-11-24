@@ -1,0 +1,10 @@
+streamlit
+nibabel
+numpy
+scikit-image
+pyvista
+stpyvista
+matplotlib
+synapseclient
+plotly
+torch

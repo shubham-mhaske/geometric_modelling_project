@@ -14,6 +14,7 @@ from plotly.subplots import make_subplots  # type: ignore
 import matplotlib.pyplot as plt
 import pandas as pd
 from src.algorithms import smoothing, simplification, metrics
+from src.algorithms.processing import map_labels_to_vertices, coarsen_label_volume
 from src.ml import get_ml_optimizer
 
 # Ensure PyVista does not try to create native windows
@@ -52,7 +53,7 @@ def find_local_nifti_files(search_dir='data'):
 def process_nifti_to_mesh(file_path_or_bytes):
     """
     Accept either a filesystem path or a bytes-like object (e.g. uploaded file).
-    Returns (pyvista_mesh, aspect_ratios_array, verts, faces)
+    Returns (pyvista_mesh, aspect_ratios_array, verts, faces, label_volume, affine)
     """
     # Load nibabel image from path or bytes
     try:
@@ -83,8 +84,9 @@ def process_nifti_to_mesh(file_path_or_bytes):
             nii_img = nib.load(file_path_or_bytes)
 
         data = nii_img.get_fdata()
+        label_volume = np.asarray(data, dtype=np.int16)
         # combine labels 1,2,4 into a single binary mask
-        binary_mask = np.isin(data, [1, 2, 4]).astype(np.uint8)
+        binary_mask = np.isin(label_volume, [1, 2, 4]).astype(np.uint8)
         # If those exact labels are not present, fall back to any non-zero voxel as mask
         if binary_mask.sum() == 0:
             try:
@@ -92,7 +94,7 @@ def process_nifti_to_mesh(file_path_or_bytes):
                 st.warning("Labels 1/2/4 not found — falling back to non-zero mask for this file.")
             except Exception:
                 pass
-            binary_mask = (data != 0).astype(np.uint8)
+            binary_mask = (label_volume != 0).astype(np.uint8)
 
         # get voxel spacing (z,y,x) or (x,y,z) depending on header; marching_cubes expects spacing=(x,y,z)
         # nibabel header.get_zooms() returns spacing in the image axes order; we pass spacing=(dz, dy, dx)
@@ -111,7 +113,7 @@ def process_nifti_to_mesh(file_path_or_bytes):
         aspect_ratios = compute_aspect_ratios(verts, faces)
 
         # return verts and faces as well to enable non-VTK rendering paths
-        return mesh, aspect_ratios, verts, faces
+        return mesh, aspect_ratios, verts, faces, label_volume, nii_img.affine
     except Exception as e:
         # Provide a clear error back to Streamlit/UI
         raise RuntimeError(f"Error processing NIfTI to mesh: {e}")
@@ -175,6 +177,12 @@ with st.sidebar:
     else:
         processing_algo = st.selectbox("Smoothing Algorithm", ['None', 'Laplacian', 'Taubin'])
         iterations = st.slider("Smoothing Iterations", 0, 50, 10, help="Number of smoothing iterations")
+
+    semantic_smoothing_requested = st.checkbox(
+        "Semantic Smoothing",
+        value=False,
+        help="Respect tissue boundaries by reducing smoothing across different labels."
+    )
     
     apply_simplification = st.checkbox("Apply QEM Simplification", value=False)
     if apply_simplification:
@@ -219,15 +227,20 @@ if batch_mode and len(local_files) > 1:
         
         try:
             # Process mesh
-            mesh, aspect_ratios, verts, faces = process_nifti_to_mesh(file_path)
+            mesh, aspect_ratios, verts, faces, label_volume, affine = process_nifti_to_mesh(file_path)
             orig_vol = float(mesh.volume) if hasattr(mesh, 'volume') else 0
             orig_tris = mesh.n_faces_strict if hasattr(mesh, 'n_faces_strict') else mesh.n_cells
+
+            vertex_labels = None
+            if semantic_smoothing_requested:
+                semantic_volume = coarsen_label_volume(label_volume)
+                vertex_labels = map_labels_to_vertices(semantic_volume, affine, verts)
             
             # Apply smoothing
             if processing_algo == 'Laplacian':
-                verts = smoothing.laplacian_smoothing(verts, faces, iterations)
+                verts = smoothing.laplacian_smoothing(verts, faces, iterations, vertex_labels=vertex_labels)
             elif processing_algo == 'Taubin':
-                verts = smoothing.taubin_smoothing(verts, faces, iterations)
+                verts = smoothing.taubin_smoothing(verts, faces, iterations, vertex_labels=vertex_labels)
             
             # Apply simplification
             if apply_simplification and target_reduction > 0:
@@ -285,14 +298,17 @@ st.header("🔬 Single File Analysis")
 with st.spinner("Processing NIfTI and generating mesh..."):
     try:
         if uploaded_file_obj is not None:
-            mesh, aspect_ratios, verts, faces = process_nifti_to_mesh(uploaded_file_obj)
+            mesh, aspect_ratios, verts, faces, segmentation_volume, nifti_affine = process_nifti_to_mesh(uploaded_file_obj)
         else:
-            mesh, aspect_ratios, verts, faces = process_nifti_to_mesh(selected_path)
+            mesh, aspect_ratios, verts, faces, segmentation_volume, nifti_affine = process_nifti_to_mesh(selected_path)
         
         # Store original for all comparisons
         original_verts = verts.copy()
         original_faces = faces.copy()
         original_mesh = mesh
+
+        semantic_volume = coarsen_label_volume(segmentation_volume)
+        vertex_labels = map_labels_to_vertices(semantic_volume, nifti_affine, original_verts)
         
     except Exception as e:
         st.error(f"Failed to process the file: {e}")
@@ -309,6 +325,12 @@ if mesh is None or original_triangles == 0:
     st.stop()
 
 original_surface_area, original_volume, _ = calculate_metrics(mesh, aspect_ratios)
+
+nonzero_vertex_labels = vertex_labels[vertex_labels > 0]
+has_multiple_tissues = np.unique(nonzero_vertex_labels).size > 1
+semantic_auto_forced = bool(use_ml_optimizer and has_multiple_tissues)
+semantic_smoothing_active = semantic_smoothing_requested or semantic_auto_forced
+active_vertex_labels = vertex_labels if semantic_smoothing_active else None
 
 # ML Optimization: Predict parameters if enabled
 ml_prediction = None
@@ -333,6 +355,9 @@ if use_ml_optimizer:
                 
                 st.caption(f"Lambda: {ml_prediction['lambda']:.3f} | "
                           f"Based on {original_verts.shape[0]:,} vertices, {original_faces.shape[0]:,} faces")
+
+                if semantic_auto_forced:
+                    st.info("Semantic smoothing enforced (multiple tissue labels detected).")
         except Exception as e:
             st.warning(f"ML optimizer not available: {e}. Using heuristics.")
             # Fallback to simple heuristic
@@ -353,9 +378,13 @@ if track_volume and processing_algo != 'None' and iterations > 0:
                 volume_history.append((0, original_volume))
             else:
                 if processing_algo == 'Laplacian':
-                    temp_verts = smoothing.laplacian_smoothing(temp_verts, original_faces, 1)
+                    temp_verts = smoothing.laplacian_smoothing(
+                        temp_verts, original_faces, 1, vertex_labels=active_vertex_labels
+                    )
                 elif processing_algo == 'Taubin':
-                    temp_verts = smoothing.taubin_smoothing(temp_verts, original_faces, 1)
+                    temp_verts = smoothing.taubin_smoothing(
+                        temp_verts, original_faces, 1, vertex_labels=active_vertex_labels
+                    )
                 
                 # Compute volume
                 faces_padded = np.hstack([np.full((original_faces.shape[0], 1), 3, dtype=np.int64), original_faces]).astype(np.int64)
@@ -373,11 +402,15 @@ processed_faces = original_faces.copy()
 if processing_algo != 'None':
     if processing_algo == 'Laplacian':
         with st.spinner(f"Applying Laplacian Smoothing ({iterations} iterations)..."):
-            processed_verts = smoothing.laplacian_smoothing(processed_verts, processed_faces, iterations)
+            processed_verts = smoothing.laplacian_smoothing(
+                processed_verts, processed_faces, iterations, vertex_labels=active_vertex_labels
+            )
             
     elif processing_algo == 'Taubin':
         with st.spinner(f"Applying Taubin Smoothing ({iterations} iterations)..."):
-            processed_verts = smoothing.taubin_smoothing(processed_verts, processed_faces, iterations)
+            processed_verts = smoothing.taubin_smoothing(
+                processed_verts, processed_faces, iterations, vertex_labels=active_vertex_labels
+            )
 
 # Apply simplification
 if apply_simplification and target_reduction > 0:

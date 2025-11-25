@@ -97,9 +97,26 @@ python scripts/experiment_runner.py \
 - Volume-preserving
 - Feature-preserving
 
+**Bilateral Smoothing**: Feature-preserving filter
+- Respects edges and high-curvature regions
+- Weighs neighbors by spatial distance AND normal similarity
+
+**Guided/Adaptive Smoothing**: Curvature-aware
+- Smooths more in flat regions, less at features
+- Per-vertex adaptive lambda
+
+**Constrained Smoothing**: Landmark preservation
+- Keeps user-specified vertices fixed during smoothing
+- Ideal for preserving anatomical landmarks
+
 **QEM Simplification**: Quadric Error Metrics
 - Preserves shape while reducing triangles
 - Edge collapse with minimal error
+
+**Curvature Metrics**: Mean & Gaussian curvature
+- Discrete Laplace-Beltrami operator for mean curvature
+- Angle defect for Gaussian curvature
+- Curvature preservation error analysis
 
 **ML Optimizer**: PyTorch neural network
 - 12D feature extraction (size, edges, quality, shape)
@@ -108,11 +125,19 @@ python scripts/experiment_runner.py \
 
 ## 📈 Results
 
-Typical performance on BraTS brain tumors:
+Typical performance on BraTS brain tumors (118k vertices, 238k faces):
+
+| Algorithm | Vol Change | AR Improvement | H Correlation | Time |
+|-----------|------------|----------------|---------------|------|
+| **Taubin** | +0.01% | 13.1% | 0.158 | 0.08s |
+| Laplacian | -0.21% | 15.6% | 0.018 | 0.05s |
+| Bilateral | -0.29% | -5.1% | 0.019 | 26.9s |
+
 - **Original**: 50k triangles, noisy artifacts
 - **Taubin (20 iter)**: Smooth, <0.5% volume change
 - **QEM (50%)**: 25k triangles, Hausdorff <2mm
-- **Processing**: 3-5 seconds per mesh
+- **Curvature Analysis**: Mean H ≈ 0.30, Gaussian K ≈ 0.01
+- **Processing**: 50-100ms per mesh (Laplacian/Taubin)
 - **ML Inference**: <50ms
 
 ## 🧪 Testing

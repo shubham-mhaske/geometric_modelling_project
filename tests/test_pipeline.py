@@ -39,6 +39,11 @@ def test_smoothing():
     assert result.shape == verts.shape, "Taubin output shape mismatch"
     print("  ✓ Taubin smoothing works")
 
+    labels = np.array([0, 0, 1, 1])
+    result = smoothing.laplacian_smoothing(verts, faces, iterations=1, vertex_labels=labels)
+    assert result.shape == verts.shape, "Semantic Laplacian output shape mismatch"
+    print("  ✓ Semantic Laplacian smoothing works")
+
 def test_simplification():
     """Test QEM mesh simplification."""
     print("\nTesting QEM simplification...")
@@ -71,6 +76,44 @@ def test_metrics():
     vol_change = metrics.compute_volume_change_percent(100.0, 105.0)
     assert abs(vol_change - 5.0) < 0.01, "Volume change calculation wrong"
     print(f"  ✓ Volume change calculation: {vol_change}%")
+
+
+def test_label_mapping():
+    """Test mapping from labels to vertices."""
+    print("\nTesting label mapping...")
+    from src.algorithms.processing import map_labels_to_vertices
+
+    volume = np.zeros((4, 4, 4), dtype=np.int16)
+    volume[1:, 1:, 1:] = 4
+    affine = np.eye(4)
+    verts = np.array([
+        [0.0, 0.0, 0.0],
+        [1.2, 1.1, 1.0],
+        [3.0, 3.0, 3.0]
+    ])
+
+    labels = map_labels_to_vertices(volume, affine, verts)
+    assert labels.shape == (3,)
+    assert labels[0] == 0 and np.all(labels[1:] == 4)
+    print("  ✓ Label mapping works")
+
+
+def test_label_coarsening():
+    """Ensure verbose atlases are reduced to coarse groups."""
+    print("\nTesting label coarsening...")
+    from src.algorithms.processing import coarsen_label_volume
+
+    verbose = np.arange(64, dtype=np.int16).reshape(4, 4, 4)
+    collapsed = coarsen_label_volume(verbose, canonical_labels=(), max_groups=3)
+    assert collapsed.max() <= 3, "Collapsed volume should use <= max_groups labels"
+
+    canonical = np.zeros((2, 2, 2), dtype=np.int16)
+    canonical[0, 0, 0] = 1
+    canonical[0, 0, 1] = 2
+    canonical[0, 1, 0] = 4
+    preserved = coarsen_label_volume(canonical)
+    assert np.array_equal(preserved, canonical), "Canonical BraTS labels must remain untouched"
+    print("  ✓ Label coarsening works")
 
 def test_imports():
     """Test all required imports."""
@@ -142,6 +185,8 @@ if __name__ == "__main__":
         test_smoothing()
         test_simplification()
         test_metrics()
+        test_label_mapping()
+        test_label_coarsening()
         test_ml_optimizer()
         
         print("\n" + "=" * 60)

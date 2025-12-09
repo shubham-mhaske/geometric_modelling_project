@@ -1,627 +1,1161 @@
+"""
+Brain Tumor 3D Mesh Analysis Demo
+Interactive MRI + 3D Mesh Visualization with Tumor Overlays
+"""
+
 import os
 import io
 import json
 import glob
 import tempfile
+import time
 
 import streamlit as st
 import nibabel as nib
 import numpy as np
 from skimage import measure
 import pyvista as pv
-import plotly.graph_objects as go  # type: ignore
-from plotly.subplots import make_subplots  # type: ignore
-import matplotlib.pyplot as plt
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import pandas as pd
+
 from src.algorithms import smoothing, simplification, metrics
 from src.algorithms.processing import map_labels_to_vertices, coarsen_label_volume
-from src.ml import get_ml_optimizer
+from src.algorithms.novel_algorithms_efficient import (
+    geodesic_heat_smoothing,
+    anisotropic_tensor_smoothing,
+    information_theoretic_smoothing
+)
 
-# Ensure PyVista does not try to create native windows
+# PyVista configuration
 pv.OFF_SCREEN = True
+pv.global_theme.background = 'black'
+pv.global_theme.font.color = 'white'
 
-# --- Helper utilities ---
-def compute_aspect_ratios(verts, faces):
-    """Compute triangle aspect ratio for each triangle as (max_edge / min_edge)."""
-    if faces is None or faces.size == 0:
-        return np.array([])
+# ============================================================================
+# DATA LOADING HELPERS
+# ============================================================================
+
+def find_patient_data(search_dir='data'):
+    """Find all patient folders with complete MRI+mask data."""
+    patients = {}
     
-    # faces is Nx3 indices into verts
-    v0 = verts[faces[:, 0]]
-    v1 = verts[faces[:, 1]]
-    v2 = verts[faces[:, 2]]
-    e0 = np.linalg.norm(v1 - v0, axis=1)
-    e1 = np.linalg.norm(v2 - v1, axis=1)
-    e2 = np.linalg.norm(v0 - v2, axis=1)
-    max_e = np.maximum(np.maximum(e0, e1), e2)
-    min_e = np.minimum(np.minimum(e0, e1), e2)
-    # avoid division by zero
-    min_e = np.where(min_e == 0, 1e-12, min_e)
-    return max_e / min_e
+    # Search in data/data folder for BraTS cases
+    data_folder = os.path.join(search_dir, 'data')
+    if os.path.exists(data_folder):
+        for patient_folder in glob.glob(os.path.join(data_folder, 'BraTS-*')):
+            patient_id = os.path.basename(patient_folder)
+            
+            # Find all files for this patient
+            files = {
+                't1c': None, 't1n': None, 't2f': None, 't2w': None, 'mask': None
+            }
+            
+            for f in os.listdir(patient_folder):
+                fpath = os.path.join(patient_folder, f)
+                if 't1c.nii' in f:
+                    files['t1c'] = fpath
+                elif 't1n.nii' in f and 'voided' not in f:
+                    files['t1n'] = fpath
+                elif 't2f.nii' in f:
+                    files['t2f'] = fpath
+                elif 't2w.nii' in f:
+                    files['t2w'] = fpath
+                elif 'mask.nii' in f:
+                    files['mask'] = fpath
+            
+            # Only include if we have mask
+            if files['mask']:
+                patients[patient_id] = files
+    
+    return patients
 
-def find_local_nifti_files(search_dir='data'):
-    """Return sorted list of .nii/.nii.gz files under search_dir."""
-    patterns = [os.path.join(search_dir, '**', '*.nii'), os.path.join(search_dir, '**', '*.nii.gz')]
-    matches = []
-    for pat in patterns:
-        matches.extend(glob.glob(pat, recursive=True))
-    # unique and sorted
-    return sorted(list(dict.fromkeys(matches)))
+
+def load_mri_volume(file_path):
+    """Load MRI volume and return data + affine."""
+    try:
+        nii = nib.load(file_path)
+        data = nii.get_fdata()
+        return data, nii.affine, nii.header.get_zooms()
+    except Exception as e:
+        st.error(f"Error loading {file_path}: {e}")
+        return None, None, None
 
 
 @st.cache_data
-def process_nifti_to_mesh(file_path_or_bytes):
-    """
-    Accept either a filesystem path or a bytes-like object (e.g. uploaded file).
-    Returns (pyvista_mesh, aspect_ratios_array, verts, faces, label_volume, affine)
-    """
-    # Load nibabel image from path or bytes
-    try:
-        if isinstance(file_path_or_bytes, (bytes, bytearray)):
-            img = nib.Nifti1Image.from_bytes(file_path_or_bytes) if hasattr(nib.Nifti1Image, 'from_bytes') else None
-            if img is None:
-                # fallback: write to temp file
-                tmp = tempfile.NamedTemporaryFile(suffix='.nii.gz', delete=False)
-                tmp.write(file_path_or_bytes)
-                tmp.flush()
-                tmp.close()
-                nii_img = nib.load(tmp.name)
-                os.unlink(tmp.name)
-                    # Try an interactive Plotly Mesh3d viewer in the browser; fallback to matplotlib if not available
-            else:
-                nii_img = img
-        elif hasattr(file_path_or_bytes, 'read'):
-            # file-like object (Streamlit upload)
-            data = file_path_or_bytes.read()
-            tmp = tempfile.NamedTemporaryFile(suffix='.nii.gz', delete=False)
-            tmp.write(data)
-            tmp.flush()
-            tmp.close()
-            nii_img = nib.load(tmp.name)
-            os.unlink(tmp.name)
-        else:
-            # assume path
-            nii_img = nib.load(file_path_or_bytes)
+def load_patient_data(_patient_files):
+    """Load all MRI sequences and mask for a patient."""
+    patient_files = _patient_files
+    data = {}
+    
+    for modality, fpath in patient_files.items():
+        if fpath:
+            vol, affine, zooms = load_mri_volume(fpath)
+            if vol is not None:
+                data[modality] = {
+                    'volume': vol,
+                    'affine': affine,
+                    'zooms': zooms,
+                    'path': fpath
+                }
+    
+    return data
 
-        data = nii_img.get_fdata()
-        label_volume = np.asarray(data, dtype=np.int16)
-        # combine labels 1,2,4 into a single binary mask
-        binary_mask = np.isin(label_volume, [1, 2, 4]).astype(np.uint8)
-        # If those exact labels are not present, fall back to any non-zero voxel as mask
+
+@st.cache_data
+def process_nifti_to_mesh(_mask_data, tumor_region='all', _cache_key=None):
+    """Convert tumor mask to 3D mesh."""
+    try:
+        label_volume = np.asarray(_mask_data['volume'], dtype=np.int16)
+        zooms = _mask_data['zooms']
+        affine = _mask_data['affine']
+        
+        # Select tumor region
+        region_labels = {
+            'all': [1, 2, 4],
+            'core': [1, 4],
+            'enhancing': [4],
+            'edema': [2],
+            'necrotic': [1]
+        }
+        labels_to_use = region_labels.get(tumor_region, [1, 2, 4])
+        binary_mask = np.isin(label_volume, labels_to_use).astype(np.uint8)
+        
         if binary_mask.sum() == 0:
-            try:
-                # show a lightweight note in the UI (if available)
-                st.warning("Labels 1/2/4 not found — falling back to non-zero mask for this file.")
-            except Exception:
-                pass
             binary_mask = (label_volume != 0).astype(np.uint8)
-
-        # get voxel spacing (z,y,x) or (x,y,z) depending on header; marching_cubes expects spacing=(x,y,z)
-        # nibabel header.get_zooms() returns spacing in the image axes order; we pass spacing=(dz, dy, dx)
-        zooms = nii_img.header.get_zooms()[:3]
-        # scikit-image marching_cubes expects spacing ordered like the array axes: (z_spacing, y_spacing, x_spacing)
-        spacing = tuple(zooms)
-
-        # run marching cubes on binary mask
-        verts, faces, normals, values = measure.marching_cubes(binary_mask, level=0.5, spacing=spacing)
-
-        # faces from marching_cubes are Nx3 indices; pyvista expects faces as [3, i0, i1, i2, 3, ...]
+            if binary_mask.sum() == 0:
+                raise ValueError("No tumor found in mask")
+        
+        # Smooth mask
+        from scipy.ndimage import gaussian_filter, binary_closing
+        binary_mask = binary_closing(binary_mask, iterations=1).astype(np.uint8)
+        smooth_mask = gaussian_filter(binary_mask.astype(float), sigma=0.5)
+        
+        # Generate mesh
+        verts, faces, _, _ = measure.marching_cubes(smooth_mask, level=0.5, spacing=tuple(zooms[:3]))
+        
+        # Keep largest component
+        if len(verts) > 100:
+            verts, faces = keep_largest_component(verts, faces)
+        
         faces_padded = np.hstack([np.full((faces.shape[0], 1), 3, dtype=np.int64), faces]).astype(np.int64)
-
         mesh = pv.PolyData(verts, faces_padded)
-
-        aspect_ratios = compute_aspect_ratios(verts, faces)
-
-        # return verts and faces as well to enable non-VTK rendering paths
-        return mesh, aspect_ratios, verts, faces, label_volume, nii_img.affine
-    except Exception as e:
-        # Provide a clear error back to Streamlit/UI
-        raise RuntimeError(f"Error processing NIfTI to mesh: {e}")
-
-
-def calculate_metrics(mesh, aspect_ratios):
-    """Return surface_area (float), volume (float), and aspect_ratios array."""
-    try:
-        surface_area = float(mesh.area)
-    except Exception:
-        surface_area = float('nan')
-
-    try:
-        volume = float(mesh.volume)
-    except Exception:
-        # fallback: compute mesh volume via tetrahedralization (approx) or set nan
-        volume = float('nan')
-
-    return surface_area, volume, aspect_ratios
-
-
-# --- Streamlit UI ---
-st.set_page_config(page_title="CSCE 645: Brain Tumor 3D Analysis — Update 2", layout='wide')
-
-st.title("🧠 Brain Tumor 3D Analysis — Complete Pipeline")
-st.markdown(
-    """
-    High-fidelity mesh improvement for MRI-derived anatomical models.  
-    **Features:** Laplacian & Taubin smoothing • QEM simplification • Hausdorff distance • Volume tracking
-    """
-)
-
-with st.sidebar:
-    st.header("Controls")
-
-    # File input: uploader or pick from local data/
-    uploaded = st.file_uploader("Upload a BraTS segmentation (.nii or .nii.gz)", type=['nii', 'gz', 'nii.gz'])
-
-    local_files = find_local_nifti_files('data')
-    local_choice = None
-    if local_files:
-        options = ['-- none --'] + local_files
-        # If the user has not uploaded a file, auto-select the first local sample for a demo
-        default_index = 1 if uploaded is None else 0
-        default_index = min(default_index, len(options) - 1)
-        local_choice = st.selectbox("Or choose a local sample file (from data/)", options, index=default_index)
-        if uploaded is None and local_choice != '-- none --':
-            st.info(f"Auto-selected sample: {os.path.basename(local_choice)}")
-
-    st.markdown("---")
-    st.subheader("Processing Options")
-    
-    # ML-based parameter optimization
-    use_ml_optimizer = st.checkbox("🤖 ML-Optimized Parameters", value=False, 
-                                   help="Use AI to predict optimal smoothing settings")
-    
-    if use_ml_optimizer:
-        st.info("AI will analyze mesh and recommend parameters automatically")
-        processing_algo = None  # Will be set by ML
-        iterations = None
-    else:
-        processing_algo = st.selectbox("Smoothing Algorithm", ['None', 'Laplacian', 'Taubin'])
-        iterations = st.slider("Smoothing Iterations", 0, 50, 10, help="Number of smoothing iterations")
-
-    semantic_smoothing_requested = st.checkbox(
-        "Semantic Smoothing",
-        value=False,
-        help="Respect tissue boundaries by reducing smoothing across different labels."
-    )
-    
-    apply_simplification = st.checkbox("Apply QEM Simplification", value=False)
-    if apply_simplification:
-        target_reduction = st.slider("Reduction %", 0, 95, 50, help="Percentage of triangles to remove") / 100.0
-    else:
-        target_reduction = 0.0
-    
-    st.markdown("---")
-    st.subheader("Analysis Options")
-    show_comparison = st.checkbox("Side-by-Side Comparison", value=True)
-    track_volume = st.checkbox("Track Volume Over Iterations", value=False)
-    compute_hausdorff = st.checkbox("Compute Hausdorff Distance", value=True)
-    
-    st.markdown("---")
-    batch_mode = st.checkbox("Batch Processing Mode", value=False, help="Process all local files")
-    if batch_mode:
-        st.info("Batch mode: Will process all files in data/ folder")
-
-# Determine which file to use
-selected_path = None
-uploaded_file_obj = None
-if uploaded is not None:
-    uploaded_file_obj = uploaded
-elif local_choice and local_choice != '-- none --':
-    selected_path = local_choice
-
-if selected_path is None and uploaded_file_obj is None:
-    st.info("Please upload a BraTS segmentation (.nii.gz) or choose a sample file from the sidebar to begin.")
-    st.stop()
-
-# Batch processing mode
-if batch_mode and len(local_files) > 1:
-    st.header("📦 Batch Processing Results")
-    
-    batch_results = []
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-    
-    for idx, file_path in enumerate(local_files):
-        status_text.text(f"Processing {idx+1}/{len(local_files)}: {os.path.basename(file_path)}")
-        progress_bar.progress((idx + 1) / len(local_files))
         
-        try:
-            # Process mesh
-            mesh, aspect_ratios, verts, faces, label_volume, affine = process_nifti_to_mesh(file_path)
-            orig_vol = float(mesh.volume) if hasattr(mesh, 'volume') else 0
-            orig_tris = mesh.n_faces_strict if hasattr(mesh, 'n_faces_strict') else mesh.n_cells
+        # Map vertices to tumor labels
+        vertex_labels = map_vertex_to_tumor_region(verts, label_volume, affine, zooms[:3])
+        
+        return mesh, verts, faces, vertex_labels, label_volume
+        
+    except Exception as e:
+        raise RuntimeError(f"Error processing mask: {e}")
 
-            vertex_labels = None
-            if semantic_smoothing_requested:
-                semantic_volume = coarsen_label_volume(label_volume)
-                vertex_labels = map_labels_to_vertices(semantic_volume, affine, verts)
-            
-            # Apply smoothing
-            if processing_algo == 'Laplacian':
-                verts = smoothing.laplacian_smoothing(verts, faces, iterations, vertex_labels=vertex_labels)
-            elif processing_algo == 'Taubin':
-                verts = smoothing.taubin_smoothing(verts, faces, iterations, vertex_labels=vertex_labels)
-            
-            # Apply simplification
-            if apply_simplification and target_reduction > 0:
-                verts, faces = simplification.qem_simplification(verts, faces, target_reduction)
-            
-            # Reconstruct
-            faces_padded = np.hstack([np.full((faces.shape[0], 1), 3, dtype=np.int64), faces]).astype(np.int64)
-            new_mesh = pv.PolyData(verts, faces_padded)
-            new_vol = float(new_mesh.volume) if hasattr(new_mesh, 'volume') else 0
-            new_tris = new_mesh.n_faces_strict if hasattr(new_mesh, 'n_faces_strict') else new_mesh.n_cells
-            
-            vol_change = ((new_vol - orig_vol) / orig_vol) * 100 if orig_vol > 0 else 0
-            
-            batch_results.append({
-                'File': os.path.basename(file_path),
-                'Original Triangles': orig_tris,
-                'Processed Triangles': new_tris,
-                'Reduction %': ((orig_tris - new_tris) / orig_tris * 100) if orig_tris > 0 else 0,
-                'Original Volume (mm³)': orig_vol,
-                'Processed Volume (mm³)': new_vol,
-                'Volume Change %': vol_change
-            })
-        except Exception as e:
-            batch_results.append({
-                'File': os.path.basename(file_path),
-                'Original Triangles': 'Error',
-                'Processed Triangles': 'Error',
-                'Reduction %': 'Error',
-                'Original Volume (mm³)': 'Error',
-                'Processed Volume (mm³)': 'Error',
-                'Volume Change %': str(e)
-            })
+
+def keep_largest_component(verts, faces):
+    """Keep only largest connected mesh component."""
+    try:
+        import trimesh
+        mesh = trimesh.Trimesh(vertices=verts, faces=faces)
+        components = mesh.split(only_watertight=False)
+        if len(components) > 1:
+            largest = max(components, key=lambda m: len(m.vertices))
+            return largest.vertices, largest.faces
+        return verts, faces
+    except:
+        return verts, faces
+
+
+def map_vertex_to_tumor_region(verts, label_volume, affine, zooms):
+    """Map vertices to tumor region labels."""
+    try:
+        voxel_coords = (verts / np.array(zooms)).astype(int)
+        voxel_coords = np.clip(voxel_coords, 0, np.array(label_volume.shape) - 1)
+        labels = label_volume[voxel_coords[:, 0], voxel_coords[:, 1], voxel_coords[:, 2]]
+        return labels.astype(int)
+    except:
+        return np.zeros(len(verts), dtype=int)
+
+
+@st.cache_data
+def create_brain_surface_mesh(_mri_data, _cache_key=None):
+    """Create brain surface mesh from MRI volume (skull-stripped)."""
+    try:
+        volume = _mri_data['volume']
+        zooms = _mri_data['zooms']
+        
+        # Simple brain extraction: threshold + morphology
+        from scipy.ndimage import gaussian_filter, binary_fill_holes, binary_erosion, binary_dilation
+        
+        # Normalize and threshold
+        vol_norm = (volume - volume.min()) / (volume.max() - volume.min() + 1e-10)
+        threshold = np.percentile(vol_norm[vol_norm > 0], 10) if np.any(vol_norm > 0) else 0.1
+        brain_mask = vol_norm > threshold
+        
+        # Morphological operations to get smooth brain surface
+        brain_mask = binary_erosion(brain_mask, iterations=2)
+        brain_mask = binary_fill_holes(brain_mask)
+        brain_mask = binary_dilation(brain_mask, iterations=2)
+        
+        # Smooth the mask
+        smooth_mask = gaussian_filter(brain_mask.astype(float), sigma=1.5)
+        
+        # Generate mesh
+        verts, faces, _, _ = measure.marching_cubes(smooth_mask, level=0.5, spacing=tuple(zooms[:3]))
+        
+        # Keep largest component (the brain)
+        if len(verts) > 100:
+            verts, faces = keep_largest_component(verts, faces)
+        
+        faces_padded = np.hstack([np.full((faces.shape[0], 1), 3, dtype=np.int64), faces]).astype(np.int64)
+        mesh = pv.PolyData(verts, faces_padded)
+        
+        return mesh, verts, faces
+        
+    except Exception as e:
+        st.warning(f"Could not create brain surface: {e}")
+        return None, None, None
+
+
+# ============================================================================
+# MRI VISUALIZATION
+# ============================================================================
+
+def create_mri_slice_view(volume, slice_idx, plane='axial', tumor_mask=None, overlay_alpha=0.4):
+    """Create MRI slice with optional tumor overlay."""
     
-    status_text.text("✅ Batch processing complete!")
+    # Get slice based on plane
+    if plane == 'axial':
+        mri_slice = volume[:, :, slice_idx]
+        if tumor_mask is not None:
+            tumor_slice = tumor_mask[:, :, slice_idx]
+    elif plane == 'coronal':
+        mri_slice = volume[:, slice_idx, :]
+        if tumor_mask is not None:
+            tumor_slice = tumor_mask[:, slice_idx, :]
+    else:  # sagittal
+        mri_slice = volume[slice_idx, :, :]
+        if tumor_mask is not None:
+            tumor_slice = tumor_mask[slice_idx, :, :]
     
-    # Display results table
-    df_results = pd.DataFrame(batch_results)
-    st.dataframe(df_results, use_container_width=True)
+    # Normalize MRI
+    mri_slice = mri_slice.T  # Flip for correct orientation
+    vmin, vmax = np.percentile(mri_slice[mri_slice > 0], [2, 98]) if np.any(mri_slice > 0) else (0, 1)
     
-    # Download CSV
-    csv = df_results.to_csv(index=False)
-    st.download_button(
-        label="📥 Download Results (CSV)",
-        data=csv,
-        file_name="batch_processing_results.csv",
-        mime="text/csv"
+    fig = go.Figure()
+    
+    # Add MRI as grayscale
+    fig.add_trace(go.Heatmap(
+        z=mri_slice,
+        colorscale='gray',
+        zmin=vmin,
+        zmax=vmax,
+        showscale=False,
+        hoverinfo='skip'
+    ))
+    
+    # Add tumor overlay if provided
+    if tumor_mask is not None:
+        tumor_slice = tumor_slice.T
+        tumor_rgba = np.zeros((*tumor_slice.shape, 4))
+        
+        # Color code: 1=red (necrotic), 2=blue (edema), 4=yellow (enhancing)
+        tumor_rgba[tumor_slice == 1] = [1, 0, 0, overlay_alpha]  # Necrotic - Red
+        tumor_rgba[tumor_slice == 2] = [0, 0.5, 1, overlay_alpha]  # Edema - Blue
+        tumor_rgba[tumor_slice == 4] = [1, 1, 0, overlay_alpha]  # Enhancing - Yellow
+        
+        # Create custom colorscale for overlay
+        if np.any(tumor_slice > 0):
+            fig.add_trace(go.Heatmap(
+                z=tumor_slice,
+                colorscale=[
+                    [0.0, 'rgba(0,0,0,0)'],
+                    [0.1, 'rgba(255,0,0,0.4)'],      # Necrotic
+                    [0.4, 'rgba(0,128,255,0.4)'],    # Edema
+                    [1.0, 'rgba(255,255,0,0.4)']     # Enhancing
+                ],
+                showscale=False,
+                hoverinfo='skip'
+            ))
+    
+    fig.update_layout(
+        xaxis=dict(visible=False, showticklabels=False),
+        yaxis=dict(visible=False, showticklabels=False, scaleanchor='x'),
+        margin=dict(l=0, r=0, t=0, b=0),
+        paper_bgcolor='#0a0a1a',
+        plot_bgcolor='#0a0a1a',
+        height=400
     )
     
-    st.stop()
+    return fig
 
-# Single file processing mode
-st.header("🔬 Single File Analysis")
 
-# Process file
-with st.spinner("Processing NIfTI and generating mesh..."):
-    try:
-        if uploaded_file_obj is not None:
-            mesh, aspect_ratios, verts, faces, segmentation_volume, nifti_affine = process_nifti_to_mesh(uploaded_file_obj)
+def create_multimodal_view(patient_data, slice_idx, plane='axial', show_tumor=True):
+    """Create side-by-side view of multiple MRI modalities."""
+    
+    modalities_order = ['t1n', 't1c', 't2w', 't2f']
+    available_modalities = [m for m in modalities_order if m in patient_data]
+    
+    n_cols = len(available_modalities)
+    if n_cols == 0:
+        return None
+    
+    fig = make_subplots(
+        rows=1, cols=n_cols,
+        subplot_titles=[m.upper() for m in available_modalities],
+        horizontal_spacing=0.02
+    )
+    
+    tumor_mask = patient_data['mask']['volume'] if show_tumor and 'mask' in patient_data else None
+    
+    for idx, modality in enumerate(available_modalities, 1):
+        volume = patient_data[modality]['volume']
+        
+        # Get slice
+        if plane == 'axial':
+            mri_slice = volume[:, :, slice_idx].T
+            tumor_slice = tumor_mask[:, :, slice_idx].T if tumor_mask is not None else None
+        elif plane == 'coronal':
+            mri_slice = volume[:, slice_idx, :].T
+            tumor_slice = tumor_mask[:, slice_idx, :].T if tumor_mask is not None else None
+        else:  # sagittal
+            mri_slice = volume[slice_idx, :, :].T
+            tumor_slice = tumor_mask[slice_idx, :, :].T if tumor_mask is not None else None
+        
+        # Normalize
+        vmin, vmax = np.percentile(mri_slice[mri_slice > 0], [2, 98]) if np.any(mri_slice > 0) else (0, 1)
+        
+        # Add MRI
+        fig.add_trace(go.Heatmap(
+            z=mri_slice,
+            colorscale='gray',
+            zmin=vmin,
+            zmax=vmax,
+            showscale=False,
+            hoverinfo='skip'
+        ), row=1, col=idx)
+        
+        # Add tumor overlay
+        if tumor_slice is not None and np.any(tumor_slice > 0):
+            fig.add_trace(go.Heatmap(
+                z=tumor_slice,
+                colorscale=[
+                    [0.0, 'rgba(0,0,0,0)'],
+                    [0.25, 'rgba(255,0,0,0.5)'],
+                    [0.5, 'rgba(0,128,255,0.5)'],
+                    [1.0, 'rgba(255,255,0,0.5)']
+                ],
+                showscale=False,
+                hoverinfo='skip'
+            ), row=1, col=idx)
+    
+    # Update all axes
+    for i in range(1, n_cols + 1):
+        fig.update_xaxes(visible=False, showticklabels=False, row=1, col=i)
+        fig.update_yaxes(visible=False, showticklabels=False, scaleanchor=f'x{i}', row=1, col=i)
+    
+    fig.update_layout(
+        paper_bgcolor='#0a0a1a',
+        plot_bgcolor='#0a0a1a',
+        margin=dict(l=0, r=0, t=40, b=0),
+        height=400,
+        font=dict(color='white', size=12)
+    )
+    
+    return fig
+
+
+# ============================================================================
+# 3D MESH VISUALIZATION
+# ============================================================================
+
+def create_stunning_3d_mesh(verts, faces,
+                              vertex_labels=None, displacement=None,
+                              color_mode='tumor_region', title=None, show_wireframe=False):
+    """Create a single, visually appealing 3D mesh for the tumor."""
+
+    def _scene_bounds(v, padding=0.05):
+        # Compute a cube bounding box to avoid clipping when rotating/zooming
+        center = v.mean(axis=0)
+        ranges = v.max(axis=0) - v.min(axis=0)
+        max_range = ranges.max()
+        pad = max_range * padding
+        half = max_range / 2 + pad
+        return center, half
+    
+    traces = []
+    # Softer, balanced lighting to avoid harsh highlights and z-fighting feel
+    lighting = dict(ambient=0.55, diffuse=0.65, specular=0.12, roughness=0.7, fresnel=0.05)
+    
+    # Add tumor mesh (solid, colored)
+    intensity = None
+    colorscale = None
+    showscale = False
+    tumor_color = '#ff6b6b'
+    
+    if color_mode == 'tumor_region' and vertex_labels is not None and len(vertex_labels) > 0:
+        intensity = vertex_labels.astype(float)
+        colorscale = [
+            [0.0, '#555577'],
+            [0.33, '#ef4444'],
+            [0.66, '#3b82f6'],
+            [1.0, '#fbbf24']
+        ]
+        showscale = False
+        
+    elif color_mode == 'displacement' and displacement is not None and len(displacement) > 0:
+        if displacement.max() > 0:
+            intensity = (displacement - displacement.min()) / (displacement.max() - displacement.min() + 1e-10)
+            colorscale = [[0.0, '#1e3a5f'], [0.5, '#667eea'], [1.0, '#f5576c']]
+            showscale = True
+    
+    # Tuned lighting for more realistic shading
+    lighting = dict(ambient=0.35, diffuse=0.8, specular=0.25, roughness=0.45, fresnel=0.2)
+
+    tumor_kwargs = dict(
+        x=verts[:, 0], 
+        y=verts[:, 1], 
+        z=verts[:, 2],
+        i=faces[:, 0], 
+        j=faces[:, 1], 
+        k=faces[:, 2],
+        opacity=1.0,  # fully opaque to avoid seeing inner surfaces
+        lighting=lighting,
+        lightposition=dict(x=900, y=1400, z=1800),
+        flatshading=False,
+        name='Tumor',
+        hoverinfo='skip'
+    )
+    
+    if intensity is not None:
+        tumor_kwargs['intensity'] = intensity
+        tumor_kwargs['colorscale'] = colorscale
+        tumor_kwargs['showscale'] = showscale
+    else:
+        tumor_kwargs['color'] = tumor_color
+    
+    traces.append(go.Mesh3d(**tumor_kwargs))
+
+    if show_wireframe:
+        traces.append(go.Scatter3d(
+            x=verts[:, 0],
+            y=verts[:, 1],
+            z=verts[:, 2],
+            mode='lines',
+            line=dict(color='rgba(255, 255, 255, 0.2)', width=1),
+            hoverinfo='none',
+            name='Wireframe'
+        ))
+
+    fig = go.Figure(data=traces)
+    
+    center, half = _scene_bounds(verts)
+
+    fig.update_layout(
+        scene=dict(
+            xaxis=dict(visible=False, showbackground=False, showgrid=False,
+                      range=[center[0]-half, center[0]+half]),
+            yaxis=dict(visible=False, showbackground=False, showgrid=False,
+                      range=[center[1]-half, center[1]+half]),
+            zaxis=dict(visible=False, showbackground=False, showgrid=False,
+                      range=[center[2]-half, center[2]+half]),
+            bgcolor='#0a0a1a',
+            aspectmode='cube',
+            aspectratio=dict(x=1, y=1, z=1),
+            camera=dict(
+                eye=dict(x=1.5, y=1.5, z=1.2),
+                up=dict(x=0, y=0, z=1),
+                center=dict(x=0, y=0, z=0),
+                projection=dict(type='orthographic')
+            )
+        ),
+        paper_bgcolor='#0a0a1a',
+        plot_bgcolor='#0a0a1a',
+        margin=dict(l=0, r=0, t=30 if title else 0, b=0),
+        title=dict(
+            text=title,
+            font=dict(color='white', size=14),
+            x=0.5,
+            xanchor='center'
+        ) if title else None,
+        showlegend=False,
+        height=550
+    )
+    
+    return fig
+
+
+def create_side_by_side_3d(tumor_orig_verts, tumor_orig_faces,
+                           tumor_proc_verts, tumor_proc_faces,
+                           vertex_labels=None, displacement=None):
+    """Side-by-side comparison of original vs processed with brain context."""
+    
+    fig = make_subplots(
+        rows=1, cols=2,
+        specs=[[{'type': 'scene'}, {'type': 'scene'}]],
+        subplot_titles=['Original Tumor', 'Smoothed Tumor'],
+        horizontal_spacing=0.02
+    )
+    
+    # Shared lighting tuned for more realistic shading
+    lighting = dict(ambient=0.35, diffuse=0.8, specular=0.25, roughness=0.45, fresnel=0.2)
+    
+    # Column 1: Original
+    fig.add_trace(go.Mesh3d(
+        x=tumor_orig_verts[:, 0], y=tumor_orig_verts[:, 1], z=tumor_orig_verts[:, 2],
+        i=tumor_orig_faces[:, 0], j=tumor_orig_faces[:, 1], k=tumor_orig_faces[:, 2],
+        intensity=vertex_labels.astype(float),
+        colorscale=[
+            [0.0, '#555577'],
+            [0.33, '#ef4444'],
+            [0.66, '#3b82f6'],
+            [1.0, '#fbbf24']
+        ],
+        opacity=0.95,
+        lighting=lighting, lightposition=dict(x=1200, y=1200, z=1500),
+        flatshading=False, hoverinfo='skip'
+    ), row=1, col=1)
+    
+    # Column 2: Processed
+    # Color processed tumor by displacement if available
+    if displacement is not None and len(displacement) > 0 and displacement.max() > 0:
+        intensity = (displacement - displacement.min()) / (displacement.max() - displacement.min() + 1e-10)
+        colorscale = [[0.0, '#1e3a5f'], [0.5, '#667eea'], [1.0, '#f5576c']]
+        
+        fig.add_trace(go.Mesh3d(
+            x=tumor_proc_verts[:, 0], y=tumor_proc_verts[:, 1], z=tumor_proc_verts[:, 2],
+            i=tumor_proc_faces[:, 0], j=tumor_proc_faces[:, 1], k=tumor_proc_faces[:, 2],
+            intensity=intensity, colorscale=colorscale,
+            opacity=1.0,
+            lighting=lighting, lightposition=dict(x=900, y=1400, z=1800), flatshading=False,
+            showscale=False, hoverinfo='skip'
+        ), row=1, col=2)
+    else:
+        fig.add_trace(go.Mesh3d(
+            x=tumor_proc_verts[:, 0], y=tumor_proc_verts[:, 1], z=tumor_proc_verts[:, 2],
+            i=tumor_proc_faces[:, 0], j=tumor_proc_faces[:, 1], k=tumor_proc_faces[:, 2],
+            color='#38ef7d', opacity=1.0,
+            lighting=lighting, lightposition=dict(x=900, y=1400, z=1800),
+            flatshading=False, hoverinfo='skip'
+        ), row=1, col=2)
+    
+    # Shared bounds to prevent clipping/vanishing during interaction
+    def _scene_bounds(v, padding=0.05):
+        center = v.mean(axis=0)
+        ranges = v.max(axis=0) - v.min(axis=0)
+        max_range = ranges.max()
+        pad = max_range * padding
+        half = max_range / 2 + pad
+        return center, half
+    center, half = _scene_bounds(np.vstack([tumor_orig_verts, tumor_proc_verts]))
+
+    camera = dict(
+        eye=dict(x=1.5, y=1.5, z=1.2),
+        up=dict(x=0, y=0, z=1),
+        center=dict(x=0, y=0, z=0),
+        projection=dict(type='orthographic')
+    )
+    scene_common = dict(
+        xaxis=dict(visible=False, showbackground=False, range=[center[0]-half, center[0]+half]),
+        yaxis=dict(visible=False, showbackground=False, range=[center[1]-half, center[1]+half]),
+        zaxis=dict(visible=False, showbackground=False, range=[center[2]-half, center[2]+half]),
+        bgcolor='#0a0a1a',
+        aspectmode='cube',
+        aspectratio=dict(x=1, y=1, z=1),
+        camera=camera
+    )
+    fig.update_layout(scene=scene_common, scene2=scene_common)
+    
+    fig.update_layout(
+        paper_bgcolor='#0a0a1a',
+        plot_bgcolor='#0a0a1a',
+        margin=dict(l=0, r=0, t=30, b=0),
+        height=550,
+        font=dict(color='white', size=12),
+        showlegend=False
+    )
+    
+    return fig
+
+
+# ============================================================================
+# STYLING
+# ============================================================================
+
+def inject_enhanced_css():
+    st.markdown("""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    
+    * { font-family: 'Inter', sans-serif !important; }
+    
+    #MainMenu, footer, header { visibility: hidden; }
+    
+    .main .block-container {
+        padding: 1.5rem 2.5rem;
+        max-width: 100%;
+    }
+    
+    [data-testid="stAppViewContainer"] {
+        background: linear-gradient(135deg, #0a0a1a 0%, #1a1a3a 100%);
+    }
+    
+    [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #0f0f23 0%, #1a1a3a 100%) !important;
+        border-right: 1px solid rgba(102, 126, 234, 0.2);
+    }
+    
+    [data-testid="stSidebar"] * {
+        color: white !important;
+    }
+    
+    h1, h2, h3, h4 {
+        color: white !important;
+        font-weight: 600 !important;
+    }
+    
+    .hero-title {
+        font-size: 2.5rem;
+        font-weight: 700;
+        background: linear-gradient(135deg, #667eea 0%, #f093fb 50%, #4facfe 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        text-align: center;
+        margin-bottom: 0.5rem;
+    }
+    
+    .hero-subtitle {
+        text-align: center;
+        color: rgba(255,255,255,0.5);
+        font-size: 1rem;
+        margin-bottom: 2rem;
+    }
+    
+    .metric-card {
+        background: rgba(30, 30, 60, 0.6);
+        border: 1px solid rgba(102, 126, 234, 0.3);
+        border-radius: 12px;
+        padding: 1rem;
+        text-align: center;
+    }
+    
+    .metric-value {
+        font-size: 1.8rem;
+        font-weight: 700;
+        color: #38ef7d;
+    }
+    
+    .metric-label {
+        font-size: 0.75rem;
+        color: rgba(255,255,255,0.5);
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-top: 0.3rem;
+    }
+    
+    .section-header {
+        color: white;
+        font-size: 1.2rem;
+        font-weight: 600;
+        margin: 1.5rem 0 1rem 0;
+        padding-bottom: 0.5rem;
+        border-bottom: 2px solid rgba(102, 126, 234, 0.3);
+    }
+    
+    .legend-item {
+        display: inline-block;
+        margin: 0.3rem 0.8rem;
+        font-size: 0.85rem;
+        color: rgba(255,255,255,0.7);
+    }
+    
+    .legend-box {
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        margin-right: 0.5rem;
+        border-radius: 4px;
+        vertical-align: middle;
+    }
+    
+    div[data-testid="stExpander"] {
+        background: rgba(30, 30, 60, 0.4);
+        border: 1px solid rgba(102, 126, 234, 0.2);
+        border-radius: 12px;
+    }
+
+    .stSelectbox label, .stSlider label, .stRadio label, .stCheckbox label {
+        color: rgba(255,255,255,0.9) !important;
+        font-weight: 500 !important;
+    }
+    
+    /* Tab Styling */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+    }
+
+    .stTabs [data-baseweb="tab"] {
+        height: 50px;
+        white-space: pre-wrap;
+        background-color: rgba(30, 30, 60, 0.4);
+        border-radius: 8px 8px 0 0;
+        gap: 1px;
+        padding-top: 10px;
+        padding-bottom: 10px;
+        color: rgba(255, 255, 255, 0.7);
+    }
+
+    .stTabs [aria-selected="true"] {
+        background-color: rgba(102, 126, 234, 0.2) !important;
+        color: white !important;
+        border-bottom: 2px solid #667eea !important;
+    }
+    
+    /* Metric Card Hover Effect */
+    .metric-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+        transition: all 0.3s ease;
+    }
+    
+    </style>
+    """, unsafe_allow_html=True)
+
+
+# ============================================================================
+# MAIN APP
+# ============================================================================
+
+def main():
+    st.set_page_config(
+        page_title="Brain Tumor 3D Analysis",
+        page_icon="🧠",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
+    
+    inject_enhanced_css()
+    
+    # Title
+    st.markdown('<h1 class="hero-title">🧠 Brain Tumor MRI + 3D Mesh Analysis</h1>', unsafe_allow_html=True)
+    st.markdown('<p class="hero-subtitle">An interactive tool for visualizing and analyzing 3D brain tumor meshes from MRI data.</p>', unsafe_allow_html=True)
+
+    with st.sidebar:
+        with st.expander("ℹ️ Project Info", expanded=False):
+            st.markdown("""
+            **Geometric Modeling Project**
+            
+            This application demonstrates advanced mesh smoothing algorithms applied to brain tumor segmentation data.
+            
+            **Features:**
+            *   Multi-modal MRI visualization
+            *   Real-time 3D mesh generation
+            *   Comparative smoothing analysis
+            *   Quantitative metrics
+            """)
+            
+        with st.expander("📖 How to Use", expanded=False):
+            st.markdown("""
+            1.  **Select Patient:** Choose a case from the dropdown.
+            2.  **Configure:** Select tumor region and smoothing algorithm.
+            3.  **Analyze:** Use the tabs to switch between Dashboard, 3D Analysis, and MRI views.
+            4.  **Export:** Download results from the Export section.
+            """)
+
+    # ========================================================================
+    # SIDEBAR
+    # ========================================================================
+    with st.sidebar:
+        st.markdown("### 📁 Patient Selection")
+        
+        patients = find_patient_data('data')
+        
+        if not patients:
+            st.error("No patient data found in data/ folder")
+            st.stop()
+        
+        patient_ids = sorted(patients.keys())
+        selected_patient = st.selectbox(
+            "Choose Patient",
+            patient_ids,
+            format_func=lambda x: f"🧠 {x}"
+        )
+        
+        st.markdown("---")
+        st.markdown("### 🎯 Tumor Region")
+        tumor_region = st.selectbox(
+            "Region",
+            ["all", "core", "enhancing", "edema", "necrotic"],
+            format_func=lambda x: {
+                'all': '🧠 Whole Tumor',
+                'core': '🔴 Tumor Core',
+                'enhancing': '✨ Enhancing',
+                'edema': '💧 Edema',
+                'necrotic': '⚫ Necrotic'
+            }[x]
+        )
+        
+        st.markdown("---")
+        st.markdown("### 🔬 Smoothing Algorithm")
+        
+        algorithms = {
+            'None': 'No smoothing',
+            'Laplacian': 'Classic uniform',
+            'Taubin': 'Volume preserving',
+            'Geodesic Heat': '🔥 Curvature-adaptive',
+            'Anisotropic Tensor': '📐 82% better volume',
+            'Info-Theoretic': '🧮 Entropy-based'
+        }
+        
+        selected_algo = st.selectbox("Algorithm", list(algorithms.keys()), index=4)
+        st.caption(algorithms[selected_algo])
+        
+        if selected_algo != 'None':
+            iterations = st.slider("Iterations", 1, 30, 10)
         else:
-            mesh, aspect_ratios, verts, faces, segmentation_volume, nifti_affine = process_nifti_to_mesh(selected_path)
+            iterations = 0
         
-        # Store original for all comparisons
-        original_verts = verts.copy()
-        original_faces = faces.copy()
-        original_mesh = mesh
-
-        semantic_volume = coarsen_label_volume(segmentation_volume)
-        vertex_labels = map_labels_to_vertices(semantic_volume, nifti_affine, original_verts)
+        st.markdown("---")
+        st.markdown("### ⚙️ Settings")
         
-    except Exception as e:
-        st.error(f"Failed to process the file: {e}")
+        show_tumor_overlay = st.checkbox("Show tumor overlay on MRI", value=True)
+        show_wireframe = st.checkbox("Show mesh wireframe", value=False)
+    
+    # ========================================================================
+    # LOAD DATA
+    # ========================================================================
+    
+    patient_files = patients[selected_patient]
+    
+    with st.spinner(f"Loading {selected_patient}..."):
+        patient_data = load_patient_data(patient_files)
+    
+    if 'mask' not in patient_data:
+        st.error("No tumor mask found for this patient")
         st.stop()
-
-# Get original stats
-try:
-    original_triangles = mesh.n_faces_strict
-except Exception:
-    original_triangles = getattr(mesh, 'n_cells', 0)
-
-if mesh is None or original_triangles == 0:
-    st.warning("Marching cubes produced no mesh. Ensure the segmentation contains labels 1, 2, or 4.")
-    st.stop()
-
-original_surface_area, original_volume, _ = calculate_metrics(mesh, aspect_ratios)
-
-nonzero_vertex_labels = vertex_labels[vertex_labels > 0]
-has_multiple_tissues = np.unique(nonzero_vertex_labels).size > 1
-semantic_auto_forced = bool(use_ml_optimizer and has_multiple_tissues)
-semantic_smoothing_active = semantic_smoothing_requested or semantic_auto_forced
-active_vertex_labels = vertex_labels if semantic_smoothing_active else None
-
-# ML Optimization: Predict parameters if enabled
-ml_prediction = None
-if use_ml_optimizer:
-    with st.spinner("🤖 AI analyzing mesh characteristics..."):
-        try:
-            ml_opt = get_ml_optimizer('models/smoothing_optimizer.pth')
-            ml_prediction = ml_opt.predict(original_verts, original_faces)
-            
-            processing_algo = ml_prediction['algorithm']
-            iterations = ml_prediction['iterations']
-            
-            # Show ML predictions in an expander
-            with st.expander("🔍 AI Recommendations", expanded=True):
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.metric("Algorithm", ml_prediction['algorithm'])
-                with col2:
-                    st.metric("Iterations", ml_prediction['iterations'])
-                with col3:
-                    st.metric("Confidence", f"{ml_prediction['confidence']:.0%}")
-                
-                st.caption(f"Lambda: {ml_prediction['lambda']:.3f} | "
-                          f"Based on {original_verts.shape[0]:,} vertices, {original_faces.shape[0]:,} faces")
-
-                if semantic_auto_forced:
-                    st.info("Semantic smoothing enforced (multiple tissue labels detected).")
-        except Exception as e:
-            st.warning(f"ML optimizer not available: {e}. Using heuristics.")
-            # Fallback to simple heuristic
-            if original_triangles > 50000:
-                processing_algo = 'Taubin'
-                iterations = 20
-            else:
-                processing_algo = 'Laplacian'
-                iterations = 15
-
-# Volume tracking for iterative smoothing
-volume_history = []
-if track_volume and processing_algo != 'None' and iterations > 0:
-    with st.spinner("Tracking volume over iterations..."):
-        temp_verts = original_verts.copy()
-        for i in range(iterations + 1):
-            if i == 0:
-                volume_history.append((0, original_volume))
-            else:
-                if processing_algo == 'Laplacian':
-                    temp_verts = smoothing.laplacian_smoothing(
-                        temp_verts, original_faces, 1, vertex_labels=active_vertex_labels
-                    )
-                elif processing_algo == 'Taubin':
-                    temp_verts = smoothing.taubin_smoothing(
-                        temp_verts, original_faces, 1, vertex_labels=active_vertex_labels
-                    )
-                
-                # Compute volume
-                faces_padded = np.hstack([np.full((original_faces.shape[0], 1), 3, dtype=np.int64), original_faces]).astype(np.int64)
-                temp_mesh = pv.PolyData(temp_verts, faces_padded)
-                try:
-                    vol = float(temp_mesh.volume)
-                except:
-                    vol = float('nan')
-                volume_history.append((i, vol))
-
-# Apply processing
-processed_verts = original_verts.copy()
-processed_faces = original_faces.copy()
-
-if processing_algo != 'None':
-    if processing_algo == 'Laplacian':
-        with st.spinner(f"Applying Laplacian Smoothing ({iterations} iterations)..."):
-            processed_verts = smoothing.laplacian_smoothing(
-                processed_verts, processed_faces, iterations, vertex_labels=active_vertex_labels
-            )
-            
-    elif processing_algo == 'Taubin':
-        with st.spinner(f"Applying Taubin Smoothing ({iterations} iterations)..."):
-            processed_verts = smoothing.taubin_smoothing(
-                processed_verts, processed_faces, iterations, vertex_labels=active_vertex_labels
-            )
-
-# Apply simplification
-if apply_simplification and target_reduction > 0:
-    with st.spinner(f"Applying QEM simplification ({int(target_reduction*100)}% reduction)..."):
-        processed_verts, processed_faces = simplification.qem_simplification(
-            processed_verts, processed_faces, target_reduction
-        )
-
-# Reconstruct final mesh
-faces_padded = np.hstack([np.full((processed_faces.shape[0], 1), 3, dtype=np.int64), processed_faces]).astype(np.int64)
-mesh = pv.PolyData(processed_verts, faces_padded)
-aspect_ratios = compute_aspect_ratios(processed_verts, processed_faces)
-
-# Get processed stats
-try:
-    processed_triangles = mesh.n_faces_strict
-except Exception:
-    processed_triangles = getattr(mesh, 'n_cells', 0)
-
-# Calculate Displacement (Heatmap Data) - need to match vertex counts
-if processed_verts.shape[0] == original_verts.shape[0]:
-    displacement = np.linalg.norm(processed_verts - original_verts, axis=1)
-else:
-    # If vertex count changed (simplification), displacement not applicable
-    displacement = np.zeros(processed_verts.shape[0])
-
-mesh["Displacement (mm)"] = displacement
-
-# Compute metrics
-surface_area, volume, aspect_ratios = calculate_metrics(mesh, aspect_ratios)
-
-# Compute Hausdorff distance if requested
-hausdorff_dist = None
-if compute_hausdorff and processing_algo != 'None':
-    with st.spinner("Computing Hausdorff distance..."):
-        hausdorff_dist = metrics.hausdorff_distance(original_verts, processed_verts)
-
-# Compute volume change
-volume_change_pct = metrics.compute_volume_change_percent(original_volume, volume)
-
-# Layout: left visualization, right metrics
-col1, col2 = st.columns([2, 1])
-
-with col1:
-    st.subheader("3D Visualization")
     
-    # Visualization mode
-    if show_comparison and processing_algo != 'None':
-        # Side-by-side comparison
-        fig = make_subplots(
-            rows=1, cols=2,
-            specs=[[{'type': 'scatter3d'}, {'type': 'scatter3d'}]],
-            subplot_titles=('Original Mesh', f'Processed Mesh ({processing_algo})')
+    # Process mesh
+    cache_key = f"{selected_patient}_{tumor_region}"
+    
+    with st.spinner("Generating 3D mesh..."):
+        mesh, verts, faces, vertex_labels, label_volume = process_nifti_to_mesh(
+            patient_data['mask'], tumor_region, _cache_key=cache_key
         )
+    
+    original_verts = verts.copy()
+    original_faces = faces.copy()
+    original_volume = float(mesh.volume)
+    
+    # ========================================================================
+    # APPLY SMOOTHING
+    # ========================================================================
+    
+    processed_verts = original_verts.copy()
+    processing_time = 0.0
+    
+    if selected_algo != 'None' and iterations > 0:
+        with st.spinner(f"Applying {selected_algo}..."):
+            start_time = time.time()
+            
+            if selected_algo == 'Laplacian':
+                processed_verts = smoothing.laplacian_smoothing(processed_verts, original_faces, iterations)
+            elif selected_algo == 'Taubin':
+                processed_verts = smoothing.taubin_smoothing(processed_verts, original_faces, iterations)
+            elif selected_algo == 'Geodesic Heat':
+                processed_verts, _ = geodesic_heat_smoothing(processed_verts, original_faces, iterations=iterations)
+            elif selected_algo == 'Anisotropic Tensor':
+                processed_verts, _ = anisotropic_tensor_smoothing(processed_verts, original_faces, iterations=iterations)
+            elif selected_algo == 'Info-Theoretic':
+                processed_verts, _ = information_theoretic_smoothing(processed_verts, original_faces, iterations=iterations)
+            
+            processing_time = time.time() - start_time
+    
+    # Calculate metrics
+    faces_padded = np.hstack([np.full((original_faces.shape[0], 1), 3, dtype=np.int64), original_faces]).astype(np.int64)
+    processed_mesh = pv.PolyData(processed_verts, faces_padded)
+    processed_volume = float(processed_mesh.volume)
+    volume_change = ((processed_volume - original_volume) / original_volume) * 100
+    
+    displacement = np.linalg.norm(processed_verts - original_verts, axis=1) if processed_verts.shape == original_verts.shape else np.zeros(len(processed_verts))
+    
+    # ========================================================================
+    # METRICS ROW
+    # ========================================================================
+    
+    st.markdown('<div class="section-header">📊 Mesh Statistics</div>', unsafe_allow_html=True)
+    
+    col1, col2, col3, col4, col5 = st.columns(5)
+    
+    with col1:
+        st.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-value">{len(original_faces):,}</div>
+            <div class="metric-label">Triangles</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-value">{len(original_verts):,}</div>
+            <div class="metric-label">Vertices</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        color = '#38ef7d' if abs(volume_change) < 0.1 else '#f59e0b' if abs(volume_change) < 0.5 else '#ef4444'
+        st.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-value" style="color: {color};">{volume_change:+.2f}%</div>
+            <div class="metric-label">Volume Δ</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col4:
+        st.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-value">{displacement.mean():.2f}</div>
+            <div class="metric-label">Avg Disp (mm)</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col5:
+        st.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-value">{processing_time:.2f}s</div>
+            <div class="metric-label">Time</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # ========================================================================
+    # MAIN VISUALIZATION
+    # ========================================================================
+    
+    st.markdown('<div class="section-header">🎯 Visualization & Analysis</div>', unsafe_allow_html=True)
+    
+    # Create tabs for different views
+    tab_dashboard, tab_3d, tab_mri, tab_cross, tab_methodology = st.tabs([
+        "📊 Dashboard", "🎨 3D Analysis", "📷 MRI Viewer", "🔪 Cross-Section", "📚 Methodology"
+    ])
+    
+    # --- TAB 1: DASHBOARD (Integrated View) ---
+    with tab_dashboard:
+        # Tumor legend
+        st.markdown("""
+        <div style="text-align: center; margin: 1rem 0;">
+            <span class="legend-item">
+                <span class="legend-box" style="background: #ef4444;"></span>Necrotic Core (Label 1)
+            </span>
+            <span class="legend-item">
+                <span class="legend-box" style="background: #3b82f6;"></span>Edema (Label 2)
+            </span>
+            <span class="legend-item">
+                <span class="legend-box" style="background: #fbbf24;"></span>Enhancing Tumor (Label 4)
+            </span>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Layout: MRI slices on top, 3D meshes on bottom
+        st.markdown("#### 📷 MRI Slices (Multi-Modal)")
         
-        # Original mesh
-        fig.add_trace(
-            go.Mesh3d(
-                x=original_verts[:, 0], y=original_verts[:, 1], z=original_verts[:, 2],
-                i=original_faces[:, 0], j=original_faces[:, 1], k=original_faces[:, 2],
-                color='lightcoral',
-                lighting=dict(ambient=0.5, diffuse=0.6, specular=0.2),
-                flatshading=False,
-                name='Original',
-                showscale=False
-            ),
-            row=1, col=1
-        )
+        # Get middle slice
+        if patient_data:
+            sample_vol = next(iter([v for k, v in patient_data.items() if k != 'mask'])).get('volume')
+            if sample_vol is not None:
+                mid_slice = sample_vol.shape[2] // 2
+                
+                slice_idx = st.slider("Slice Index", 0, sample_vol.shape[2] - 1, mid_slice, key='main_slider')
+                
+                # Multi-modal view
+                fig_mri = create_multimodal_view(patient_data, slice_idx, plane='axial', show_tumor=show_tumor_overlay)
+                if fig_mri:
+                    st.plotly_chart(fig_mri, use_container_width=True, key="dashboard_mri")
         
-        # Processed mesh
-        fig.add_trace(
-            go.Mesh3d(
-                x=processed_verts[:, 0], y=processed_verts[:, 1], z=processed_verts[:, 2],
-                i=processed_faces[:, 0], j=processed_faces[:, 1], k=processed_faces[:, 2],
-                color='gold',
-                lighting=dict(ambient=0.5, diffuse=0.6, specular=0.2),
-                flatshading=False,
-                name='Processed',
-                showscale=False
-            ),
-            row=1, col=2
-        )
+        st.markdown("#### 🎨 3D Tumor Mesh")
         
-        fig.update_layout(
-            scene=dict(
-                xaxis=dict(visible=False),
-                yaxis=dict(visible=False),
-                zaxis=dict(visible=False),
-                aspectmode='data'
-            ),
-            scene2=dict(
-                xaxis=dict(visible=False),
-                yaxis=dict(visible=False),
-                zaxis=dict(visible=False),
-                aspectmode='data'
-            ),
-            margin=dict(l=0, r=0, t=30, b=0),
-            height=500
-        )
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        # Single mesh view with optional heatmap
-        viz_mode = st.radio("Color Map", ["Solid Color", "Displacement Heatmap"], horizontal=True)
+        col_left, col_right = st.columns(2)
         
-        if viz_mode == "Displacement Heatmap" and displacement.max() > 0:
-            fig = go.Figure(data=[
-                go.Mesh3d(
-                    x=processed_verts[:, 0], y=processed_verts[:, 1], z=processed_verts[:, 2],
-                    i=processed_faces[:, 0], j=processed_faces[:, 1], k=processed_faces[:, 2],
-                    intensity=displacement,
-                    colorscale='Jet',
-                    showscale=True,
-                    lighting=dict(ambient=0.5, diffuse=0.6, specular=0.2),
-                    flatshading=False,
-                    name='Mesh'
-                )
-            ])
+        with col_left:
+            st.markdown("**Original Mesh**")
+            fig_orig = create_stunning_3d_mesh(
+                original_verts, original_faces,
+                color_mode='tumor region',
+                vertex_labels=vertex_labels,
+                show_wireframe=show_wireframe
+            )
+            st.plotly_chart(fig_orig, use_container_width=True, key="dashboard_orig")
+        
+        with col_right:
+            st.markdown(f"**{selected_algo} Smoothed**" if selected_algo != 'None' else "**No Smoothing Applied**")
+            fig_proc = create_stunning_3d_mesh(
+                processed_verts, original_faces,
+                color_mode='displacement' if selected_algo != 'None' else 'tumor region',
+                displacement=displacement if selected_algo != 'None' else None,
+                vertex_labels=vertex_labels,
+                show_wireframe=show_wireframe
+            )
+            st.plotly_chart(fig_proc, use_container_width=True, key="dashboard_proc")
+    
+    # --- TAB 2: 3D ANALYSIS ---
+    with tab_3d:
+        st.markdown("#### 🎨 Detailed 3D Mesh Analysis")
+        
+        if selected_algo != 'None':
+            fig_comparison = create_side_by_side_3d(
+                original_verts, original_faces,
+                processed_verts, original_faces,
+                vertex_labels=vertex_labels,
+                displacement=displacement
+            )
+            st.plotly_chart(fig_comparison, use_container_width=True, key="3d_comparison")
         else:
-            fig = go.Figure(data=[
-                go.Mesh3d(
-                    x=processed_verts[:, 0], y=processed_verts[:, 1], z=processed_verts[:, 2],
-                    i=processed_faces[:, 0], j=processed_faces[:, 1], k=processed_faces[:, 2],
-                    color='gold',
-                    lighting=dict(ambient=0.5, diffuse=0.6, specular=0.2),
-                    flatshading=False,
-                    name='Mesh'
-                )
-            ])
-
-        fig.update_layout(
-            scene=dict(
-                xaxis=dict(visible=False),
-                yaxis=dict(visible=False),
-                zaxis=dict(visible=False),
-                aspectmode='data'
-            ),
-            margin=dict(l=0, r=0, t=0, b=0)
-        )
-        st.plotly_chart(fig, use_container_width=True)
-
-    # Download Button
-    st.markdown("### Export")
-    
-    # Save mesh to a temporary buffer
-    # PyVista save is file-based, so we use a temp file
-    with tempfile.NamedTemporaryFile(suffix=".stl", delete=False) as tmp_mesh:
-        mesh.save(tmp_mesh.name)
-        with open(tmp_mesh.name, "rb") as f:
-            st.download_button(
-                label="📥 Download Processed Mesh (.stl)",
-                data=f,
-                file_name="processed_brain.stl",
-                mime="application/octet-stream"
+            fig_single = create_stunning_3d_mesh(
+                original_verts, original_faces,
+                color_mode='tumor_region',
+                vertex_labels=vertex_labels,
+                show_wireframe=show_wireframe
             )
-    # Cleanup is handled by OS eventually or we can unlink, but inside streamlit flow it's tricky. 
-    # For small temp files it's usually fine.
+            st.plotly_chart(fig_single, use_container_width=True, key="3d_single")
+            
+        st.info("💡 Tip: Use the mouse to rotate, zoom, and pan the 3D model. Double-click to reset view.")
 
-with col2:
-    st.subheader("Quantitative Metrics")
+    # --- TAB 3: MRI VIEWER ---
+    with tab_mri:
+        st.markdown("#### 📷 Multi-Modal MRI with Tumor Overlay")
+        
+        if patient_data:
+            sample_vol = next(iter([v for k, v in patient_data.items() if k != 'mask'])).get('volume')
+            if sample_vol is not None:
+                plane = st.radio("Plane", ["axial", "coronal", "sagittal"], horizontal=True)
+                # Plane-specific max index to avoid blank slices
+                if plane == 'axial':
+                    max_idx = sample_vol.shape[2] - 1
+                elif plane == 'coronal':
+                    max_idx = sample_vol.shape[1] - 1
+                else:
+                    max_idx = sample_vol.shape[0] - 1
+                default_idx = max_idx // 2 if max_idx > 0 else 0
+                slice_idx = st.slider("Slice Index", 0, max_idx, default_idx, key=f"slice_{plane}_tab")
+                
+                fig_mri = create_multimodal_view(patient_data, slice_idx, plane=plane, show_tumor=show_tumor_overlay)
+                if fig_mri:
+                    st.plotly_chart(fig_mri, use_container_width=True, key="mri_viewer")
+
+    # --- TAB 4: CROSS-SECTION ---
+    with tab_cross:
+        st.markdown("#### 🔪 Cross-section Viewer")
+        st.markdown("Visualizing the intersection of the 3D mesh with the MRI volume.")
+        if patient_data and 't1c' in patient_data:
+            # Render off-screen and display as an image to avoid relying on st.pyvista_chart
+            p = pv.Plotter(window_size=[800, 600], off_screen=True)
+
+            pv_mesh = pv.PolyData(processed_verts, faces_padded)
+            p.add_mesh(pv_mesh, color='red', opacity=0.4)
+
+            vol = pv.wrap(patient_data['t1c']['volume'])
+            p.add_mesh_slice(vol, cmap='gray')
+
+            screenshot = p.show(screenshot=True, auto_close=True)
+            if screenshot is not None:
+                st.image(screenshot, caption="PyVista cross-section", use_column_width=True)
+            else:
+                st.info("Unable to render PyVista cross-section screenshot.")
+                
+    # --- TAB 5: METHODOLOGY ---
+    with tab_methodology:
+        st.markdown("### 📚 Smoothing Algorithms Explained")
+        
+        st.markdown("#### 1. Laplacian Smoothing")
+        st.markdown("""
+        The most basic smoothing algorithm. It moves each vertex to the average position of its neighbors.
+        $$ v_i \leftarrow v_i + \lambda \sum_{j \in N(i)} (v_j - v_i) $$
+        * **Pros:** Simple, fast.
+        * **Cons:** Causes shrinkage (volume loss).
+        """)
+        
+        st.markdown("#### 2. Taubin Smoothing")
+        st.markdown("""
+        Also known as "signal processing on meshes". It alternates between shrinking (Laplacian) and expanding steps to preserve volume.
+        * **Pros:** Preserves volume better than Laplacian.
+        * **Cons:** Can still distort shapes if parameters aren't tuned.
+        """)
+        
+        st.markdown("#### 3. Geodesic Heat Smoothing")
+        st.markdown("""
+        Uses the heat diffusion equation on the mesh surface.
+        * **Pros:** Mathematically robust, preserves geometric features.
+        * **Cons:** Computationally expensive.
+        """)
+        
+        st.markdown("#### 4. Anisotropic Tensor Smoothing")
+        st.markdown("""
+        Smooths differently in different directions (e.g., along curvature but not across edges).
+        * **Pros:** Preserves sharp features (edges).
+        * **Cons:** Complex implementation.
+        """)
+        
+        st.markdown("#### 5. Information-Theoretic Smoothing")
+        st.markdown("""
+        Minimizes an entropy-based energy function.
+        * **Pros:** Novel approach, good for noisy data.
+        * **Cons:** Experimental.
+        """)
     
-    # Comparison metrics
-    col_a, col_b = st.columns(2)
-    with col_a:
-        st.caption("Original")
-        st.metric("Triangles", f"{original_triangles:,}")
-        st.metric("Volume", f"{original_volume:,.0f} mm³")
-    with col_b:
-        st.caption("Processed")
-        st.metric("Triangles", f"{processed_triangles:,}", delta=f"{processed_triangles - original_triangles:,}")
-        st.metric("Volume", f"{volume:,.0f} mm³", delta=f"{volume_change_pct:.2f}%")
+    # ========================================================================
+    # EXPORT
+    # ========================================================================
     
-    if hausdorff_dist is not None:
-        st.metric("Hausdorff Distance", f"{hausdorff_dist:.3f} mm", help="Max geometric deviation from original")
+    with st.expander("📥 Export Options"):
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            with tempfile.NamedTemporaryFile(suffix=".stl", delete=False) as tmp:
+                processed_mesh.save(tmp.name)
+                with open(tmp.name, "rb") as f:
+                    st.download_button(
+                        "📥 Download STL",
+                        data=f.read(),
+                        file_name=f"{selected_patient}_mesh.stl",
+                        mime="application/octet-stream"
+                    )
+        
+        with col2:
+            with tempfile.NamedTemporaryFile(suffix=".obj", delete=False) as tmp:
+                processed_mesh.save(tmp.name)
+                with open(tmp.name, "rb") as f:
+                    st.download_button(
+                        "📥 Download OBJ",
+                        data=f.read(),
+                        file_name=f"{selected_patient}_mesh.obj",
+                        mime="application/octet-stream"
+                    )
+        
+        with col3:
+            # Export metrics as JSON
+            metrics_data = {
+                'patient_id': selected_patient,
+                'algorithm': selected_algo,
+                'iterations': iterations,
+                'triangles': len(original_faces),
+                'vertices': len(original_verts),
+                'volume_change_percent': float(volume_change),
+                'avg_displacement_mm': float(displacement.mean()),
+                'processing_time_sec': float(processing_time)
+            }
+            st.download_button(
+                "📥 Download Metrics (JSON)",
+                data=json.dumps(metrics_data, indent=2),
+                file_name=f"{selected_patient}_metrics.json",
+                mime="application/json"
+            )
     
-    st.metric("Surface Area", f"{surface_area:,.2f} mm²")
-    
+    # Footer
     st.markdown("---")
-    st.subheader("Triangle Quality")
-    if aspect_ratios.size == 0:
-        st.write("No triangle aspect ratios computed.")
-    else:
-        fig, ax = plt.subplots(figsize=(4, 3))
-        ax.hist(aspect_ratios, bins=60, color='#00A0B0', edgecolor='black')
-        ax.set_xlabel('Aspect Ratio (max_edge/min_edge)')
-        ax.set_ylabel('Triangle Count')
-        ax.grid(alpha=0.3)
-        mean_ar = np.mean(aspect_ratios)
-        ax.axvline(mean_ar, color='red', linestyle='--', label=f'Mean: {mean_ar:.2f}')
-        ax.legend()
-        st.pyplot(fig)
+    st.markdown("""
+    <div style="text-align: center; color: rgba(255,255,255,0.3); padding: 1rem;">
+        <div>CSCE 645 Geometric Modeling • Fall 2025</div>
+        <div style="font-size: 0.85rem; margin-top: 0.3rem;">Shubham Vikas Mhaske • Professor John Keyser</div>
+    </div>
+    """, unsafe_allow_html=True)
 
-# Volume tracking chart
-if track_volume and len(volume_history) > 0:
-    st.markdown("---")
-    st.subheader("📊 Volume Preservation Analysis")
-    
-    df = pd.DataFrame(volume_history, columns=['Iteration', 'Volume (mm³)'])
-    
-    fig, ax = plt.subplots(figsize=(8, 4))
-    ax.plot(df['Iteration'], df['Volume (mm³)'], marker='o', linewidth=2, markersize=4, color='#0ea5e9')
-    ax.axhline(original_volume, color='red', linestyle='--', label='Original Volume', linewidth=1.5)
-    ax.set_xlabel('Smoothing Iteration')
-    ax.set_ylabel('Volume (mm³)')
-    ax.set_title(f'Volume Change Over {processing_algo} Smoothing Iterations')
-    ax.grid(alpha=0.3)
-    ax.legend()
-    st.pyplot(fig)
-    
-    # Show statistics
-    final_volume_change = ((df['Volume (mm³)'].iloc[-1] - original_volume) / original_volume) * 100
-    st.info(f"**Volume Change:** {final_volume_change:+.2f}% after {iterations} iterations")
 
-st.markdown("---")
-st.caption("Complete pipeline: Marching Cubes → Smoothing (Laplacian/Taubin) → QEM Simplification → Quality Metrics")
+if __name__ == "__main__":
+    main()

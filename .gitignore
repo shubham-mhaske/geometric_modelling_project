@@ -37,6 +37,7 @@ env/
 # Synapse cache & data (large files - don't commit)
 data/
 !data/.gitkeep
+!data/paths.yaml
 .synapseConfig
 .synapseCache/
 
@@ -45,14 +46,18 @@ models/*.pth
 models/*.pkl
 models/*.h5
 
-# Outputs (generated files)
+# Outputs (generated files - keep results)
 outputs/
 !outputs/.gitkeep
-!outputs/meshes/.gitkeep
-!outputs/figures/.gitkeep
-!outputs/reports/.gitkeep
+!outputs/comprehensive_eval/
+!outputs/comprehensive_eval/results.json
+!outputs/novel_methods_evaluation/
+!outputs/novel_methods_evaluation/evaluation_results.json
+!outputs/figures/final_report/
+outputs/meshes/*
+outputs/figures/report/*
 
-# Secrets
+# Configuration (may contain API keys)
 config.json
 
 # Streamlit

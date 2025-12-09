@@ -125,20 +125,32 @@ python scripts/experiment_runner.py \
 
 ## 📈 Results
 
-Typical performance on BraTS brain tumors (118k vertices, 238k faces):
+Comprehensive evaluation across **16 samples (10 MRI + 6 CT)** with 5 metrics:
 
-| Algorithm | Vol Change | AR Improvement | H Correlation | Time |
-|-----------|------------|----------------|---------------|------|
-| **Taubin** | +0.01% | 13.1% | 0.158 | 0.08s |
-| Laplacian | -0.21% | 15.6% | 0.018 | 0.05s |
-| Bilateral | -0.29% | -5.1% | 0.019 | 26.9s |
+### MRI Brain Tumors (n=10, mean 38,650 vertices)
+| Algorithm | Smoothness | Volume Pres. | Quality | Displacement | Time |
+|-----------|------------|--------------|---------|--------------|------|
+| **Taubin** | +86.8% | 98.5% | 0.825 | 0.518mm | 41ms |
+| **Laplacian** | +70.0% | 99.8% | 0.732 | 0.248mm | 22ms |
+| **Geodesic Heat** | +68.9% | 99.3% | 0.803 | 0.387mm | 9,678ms |
+| **Info-Theoretic** | +34.2% | **100.0%** | 0.636 | 0.107mm | 15,976ms |
+| **Anisotropic** | +16.6% | 99.9% | 0.654 | **0.070mm** | 35,434ms |
 
-- **Original**: 50k triangles, noisy artifacts
-- **Taubin (20 iter)**: Smooth, <0.5% volume change
-- **QEM (50%)**: 25k triangles, Hausdorff <2mm
-- **Curvature Analysis**: Mean H ≈ 0.30, Gaussian K ≈ 0.01
-- **Processing**: 50-100ms per mesh (Laplacian/Taubin)
-- **ML Inference**: <50ms
+### CT Hemorrhage (n=6, mean 13,365 vertices)
+| Algorithm | Smoothness | Volume Pres. | Quality | Displacement | Time |
+|-----------|------------|--------------|---------|--------------|------|
+| **Taubin** | +72.1% | ⚠️ 77.7% | 0.592 | 1.076mm | 13ms |
+| **Laplacian** | +45.6% | 94.3% | 0.565 | 0.381mm | 7ms |
+| **Geodesic Heat** | +5.3% | 88.1% | 0.596 | 0.501mm | 3,333ms |
+| **Info-Theoretic** | +19.7% | **99.8%** | 0.469 | 0.142mm | 5,473ms |
+| **Anisotropic** | +5.5% | 98.0% | 0.443 | **0.068mm** | 12,085ms |
+
+**Key Findings:**
+- **Info-Theoretic**: 99.9% overall volume preservation (100.0% MRI, 99.8% CT)
+- **Geodesic Heat**: 68.9% smoothing on MRI (matches Laplacian 70.0%)
+- **⚠️ Taubin Limitation**: 22.3% volume loss on small CT meshes (mesh-size dependency)
+- **Novel Algorithms**: 236-476× slower but consistent across modalities
+- **Baselines**: Real-time (7-41ms) for interactive visualization
 
 ## 🧪 Testing
 

@@ -60,6 +60,9 @@ outputs/figures/report/*
 # Configuration (may contain API keys)
 config.json
 
+# Speaker notes (private)
+SPEAKER_SCRIPT.md
+
 # Streamlit
 .streamlit/
 

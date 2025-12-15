@@ -8,6 +8,8 @@
 **Course**: CSCE 645 - Geometric Modeling | **Texas A&M University**  
 **Author**: Shubham Vikas Mhaske | **Term**: Fall 2025
 
+**GitHub**: https://github.com/shubham-mhaske/geometric-modeling-mesh-smoothing
+
 ## 🎯 Overview
 
 This project evaluates **5 mesh smoothing algorithms** (2 classical baselines + 3 feature-aware methods) on **20 BraTS 2023 brain tumor meshes** spanning **5,990–118,970 vertices** (≈20× complexity variation), focusing on the clinically important trade-off between smoothness and volumetric accuracy.
@@ -80,7 +82,7 @@ project/
 
 ```bash
 # 1. Clone and install
-git clone <repo-url>
+git clone https://github.com/shubhammhaske/geometric-modeling-mesh-smoothing
 cd project
 pip install -r requirements.txt
 

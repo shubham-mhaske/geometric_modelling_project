@@ -1,0 +1,116 @@
+\relax 
+\providecommand\hyper@newdestlabel[2]{}
+\providecommand\HyField@AuxAddToFields[1]{}
+\providecommand\HyField@AuxAddToCoFields[2]{}
+\citation{lorensen1987marching}
+\@writefile{toc}{\contentsline {section}{\numberline {1}Introduction}{1}{section.1}\protected@file@percent }
+\newlabel{sec:introduction}{{1}{1}{Introduction}{section.1}{}}
+\newlabel{sec:introduction@cref}{{[section][1][]1}{[1][1][]1}{}{}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.1}Problem Statement}{1}{subsection.1.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.2}Contributions}{2}{subsection.1.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {2}Background and Related Work}{2}{section.2}\protected@file@percent }
+\newlabel{sec:background}{{2}{2}{Background and Related Work}{section.2}{}}
+\newlabel{sec:background@cref}{{[section][2][]2}{[1][2][]2}{}{}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.1}Mesh Smoothing Fundamentals}{2}{subsection.2.1}\protected@file@percent }
+\citation{taubin1995signal}
+\citation{meyer2003discrete}
+\newlabel{eq:laplacian}{{1}{3}{Mesh Smoothing Fundamentals}{equation.2.1}{}}
+\newlabel{eq:laplacian@cref}{{[equation][1][]1}{[1][2][]3}{}{}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}Taubin Smoothing}{3}{subsection.2.2}\protected@file@percent }
+\newlabel{eq:taubin1}{{2}{3}{Taubin Smoothing}{equation.2.2}{}}
+\newlabel{eq:taubin1@cref}{{[equation][2][]2}{[1][3][]3}{}{}{}}
+\newlabel{eq:taubin2}{{3}{3}{Taubin Smoothing}{equation.2.3}{}}
+\newlabel{eq:taubin2@cref}{{[equation][3][]3}{[1][3][]3}{}{}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.3}Curvature Analysis}{3}{subsection.2.3}\protected@file@percent }
+\newlabel{eq:mean_curvature}{{4}{3}{Curvature Analysis}{equation.2.4}{}}
+\newlabel{eq:mean_curvature@cref}{{[equation][4][]4}{[1][3][]3}{}{}{}}
+\newlabel{eq:gaussian_curvature}{{5}{3}{Curvature Analysis}{equation.2.5}{}}
+\newlabel{eq:gaussian_curvature@cref}{{[equation][5][]5}{[1][3][]3}{}{}{}}
+\citation{baid2021rsna}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.4}BraTS Dataset}{4}{subsection.2.4}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Mesh complexity statistics for the 20 evaluated BraTS cases}}{4}{table.caption.1}\protected@file@percent }
+\providecommand*\caption@xref[2]{\@setref\relax\@undefined{#1}}
+\newlabel{tab:samples}{{1}{4}{Mesh complexity statistics for the 20 evaluated BraTS cases}{table.caption.1}{}}
+\newlabel{tab:samples@cref}{{[table][1][]1}{[1][4][]4}{}{}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {3}Methodology}{4}{section.3}\protected@file@percent }
+\newlabel{sec:methodology}{{3}{4}{Methodology}{section.3}{}}
+\newlabel{sec:methodology@cref}{{[section][3][]3}{[1][4][]4}{}{}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}Pipeline Overview}{4}{subsection.3.1}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces High-fidelity mesh processing pipeline. The six-stage pipeline transforms NIfTI brain tumor segmentation masks into smooth, volume-preserving surface meshes. Each stage is annotated with its function: NIfTI loading, volume coarsening with label mapping, Marching Cubes surface extraction, Taubin $\lambda |\mu $ smoothing, quality metrics computation, and final output with visualization.}}{5}{figure.caption.2}\protected@file@percent }
+\newlabel{fig:pipeline}{{1}{5}{High-fidelity mesh processing pipeline. The six-stage pipeline transforms NIfTI brain tumor segmentation masks into smooth, volume-preserving surface meshes. Each stage is annotated with its function: NIfTI loading, volume coarsening with label mapping, Marching Cubes surface extraction, Taubin $\lambda |\mu $ smoothing, quality metrics computation, and final output with visualization}{figure.caption.2}{}}
+\newlabel{fig:pipeline@cref}{{[figure][1][]1}{[1][4][]5}{}{}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Implemented Algorithms}{5}{subsection.3.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {3.2.1}Laplacian Smoothing}{5}{subsubsection.3.2.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {3.2.2}Taubin $\lambda |\mu $ Smoothing}{5}{subsubsection.3.2.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {3.2.3}Geodesic Heat Diffusion (Ours)}{5}{subsubsection.3.2.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {3.2.4}Information-Theoretic Smoothing (Ours)}{6}{subsubsection.3.2.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {3.2.5}Anisotropic Tensor Smoothing (Ours)}{6}{subsubsection.3.2.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.3}Quality Metrics}{6}{subsection.3.3}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Quality metrics used for evaluation}}{6}{table.caption.3}\protected@file@percent }
+\newlabel{tab:metrics}{{2}{6}{Quality metrics used for evaluation}{table.caption.3}{}}
+\newlabel{tab:metrics@cref}{{[table][2][]2}{[1][6][]6}{}{}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {4}Implementation}{6}{section.4}\protected@file@percent }
+\newlabel{sec:implementation}{{4}{6}{Implementation}{section.4}{}}
+\newlabel{sec:implementation@cref}{{[section][4][]4}{[1][6][]6}{}{}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Technology Stack}{6}{subsection.4.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}Vectorized Implementation}{6}{subsection.4.2}\protected@file@percent }
+\@writefile{loa}{\contentsline {algorithm}{\numberline {1}{\ignorespaces Vectorized Taubin Smoothing}}{7}{algorithm.1}\protected@file@percent }
+\newlabel{alg:taubin}{{1}{7}{Vectorized Taubin Smoothing}{algorithm.1}{}}
+\newlabel{alg:taubin@cref}{{[algorithm][1][]1}{[1][6][]7}{}{}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.3}Interactive Application}{7}{subsection.4.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5}Experimental Results}{7}{section.5}\protected@file@percent }
+\newlabel{sec:results}{{5}{7}{Experimental Results}{section.5}{}}
+\newlabel{sec:results@cref}{{[section][5][]5}{[1][7][]7}{}{}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.1}Dataset and Setup}{7}{subsection.5.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.2}Quantitative Results (n=20)}{7}{subsection.5.2}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces Aggregate results across 20 BraTS cases (mean $\pm $ std). Runtime also shows min--max in parentheses.}}{7}{table.caption.4}\protected@file@percent }
+\newlabel{tab:results_summary}{{3}{7}{Aggregate results across 20 BraTS cases (mean $\pm $ std). Runtime also shows min--max in parentheses}{table.caption.4}{}}
+\newlabel{tab:results_summary@cref}{{[table][3][]3}{[1][7][]7}{}{}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Aggregate comparison across 20 BraTS cases. Metrics summarize signed volume change (\%), smoothness reduction (\%), aspect ratio change (\%), and runtime (ms).}}{8}{figure.caption.5}\protected@file@percent }
+\newlabel{fig:comparison}{{2}{8}{Aggregate comparison across 20 BraTS cases. Metrics summarize signed volume change (\%), smoothness reduction (\%), aspect ratio change (\%), and runtime (ms)}{figure.caption.5}{}}
+\newlabel{fig:comparison@cref}{{[figure][2][]2}{[1][8][]8}{}{}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.3}Trade-offs and Pareto Structure}{9}{subsection.5.3}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Trade-off scatter plot across 20 cases, illustrating the relationship between smoothing strength, volume change, and runtime.}}{9}{figure.caption.6}\protected@file@percent }
+\newlabel{fig:tradeoff}{{3}{9}{Trade-off scatter plot across 20 cases, illustrating the relationship between smoothing strength, volume change, and runtime}{figure.caption.6}{}}
+\newlabel{fig:tradeoff@cref}{{[figure][3][]3}{[1][8][]9}{}{}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Radar summary of normalized metrics across all five algorithms (higher is better after normalization).}}{10}{figure.caption.7}\protected@file@percent }
+\newlabel{fig:radar}{{4}{10}{Radar summary of normalized metrics across all five algorithms (higher is better after normalization)}{figure.caption.7}{}}
+\newlabel{fig:radar@cref}{{[figure][4][]4}{[1][9][]10}{}{}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces Runtime distribution across 20 cases. Most methods run in the tens of milliseconds; Anisotropic is slower and more variable.}}{11}{figure.caption.8}\protected@file@percent }
+\newlabel{fig:runtime}{{5}{11}{Runtime distribution across 20 cases. Most methods run in the tens of milliseconds; Anisotropic is slower and more variable}{figure.caption.8}{}}
+\newlabel{fig:runtime@cref}{{[figure][5][]5}{[1][10][]11}{}{}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {6}{\ignorespaces Positioning of the three proposed methods relative to classical baselines, highlighting differing trade-offs between feature preservation, smoothing strength, and compute cost.}}{11}{figure.caption.9}\protected@file@percent }
+\newlabel{fig:novelty}{{6}{11}{Positioning of the three proposed methods relative to classical baselines, highlighting differing trade-offs between feature preservation, smoothing strength, and compute cost}{figure.caption.9}{}}
+\newlabel{fig:novelty@cref}{{[figure][6][]6}{[1][11][]11}{}{}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.4}Qualitative Mesh Comparisons}{11}{subsection.5.4}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {7}{\ignorespaces Close-up mesh snapshots with consistent camera/lighting. These visuals complement the quantitative metrics by showing how each method removes voxel staircase artifacts while affecting volume and fine-scale geometry.}}{12}{figure.caption.10}\protected@file@percent }
+\newlabel{fig:mesh_compare}{{7}{12}{Close-up mesh snapshots with consistent camera/lighting. These visuals complement the quantitative metrics by showing how each method removes voxel staircase artifacts while affecting volume and fine-scale geometry}{figure.caption.10}{}}
+\newlabel{fig:mesh_compare@cref}{{[figure][7][]7}{[1][11][]12}{}{}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {8}{\ignorespaces Summary table figure aggregating the main metrics across all algorithms.}}{12}{figure.caption.11}\protected@file@percent }
+\newlabel{fig:summary_table}{{8}{12}{Summary table figure aggregating the main metrics across all algorithms}{figure.caption.11}{}}
+\newlabel{fig:summary_table@cref}{{[figure][8][]8}{[1][12][]12}{}{}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {6}Discussion}{12}{section.6}\protected@file@percent }
+\newlabel{sec:discussion}{{6}{12}{Discussion}{section.6}{}}
+\newlabel{sec:discussion@cref}{{[section][6][]6}{[1][12][]12}{}{}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.1}Volume Preservation vs. Smoothing Strength}{12}{subsection.6.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.2}Runtime Considerations}{13}{subsection.6.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {6.2.1}Implementation Architecture}{13}{subsubsection.6.2.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.3}Limitations and Considerations}{13}{subsection.6.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {7}Conclusion}{13}{section.7}\protected@file@percent }
+\newlabel{sec:conclusion}{{7}{13}{Conclusion}{section.7}{}}
+\newlabel{sec:conclusion@cref}{{[section][7][]7}{[1][13][]13}{}{}{}}
+\bibstyle{plain}
+\bibcite{baid2021rsna}{1}
+\bibcite{desbrun1999implicit}{2}
+\bibcite{fleishman2003bilateral}{3}
+\bibcite{garland1997surface}{4}
+\bibcite{lorensen1987marching}{5}
+\bibcite{meyer2003discrete}{6}
+\bibcite{nealen2006laplacian}{7}
+\bibcite{taubin1995signal}{8}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.1}Practical Recommendations}{14}{subsection.7.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.2}Future Work}{14}{subsection.7.2}\protected@file@percent }
+\newlabel{LastPage}{{7.2}{15}{Future Work}{page.15}{}}
+\gdef\lastpage@lastpage{15}
+\gdef\lastpage@lastpageHy{15}
+\gdef \@abspage@last{15}

@@ -50,17 +50,21 @@
 \fancyfoot[C]{Page \thepage\ of \pageref{LastPage}}
 \renewcommand{\headrulewidth}{0.4pt}
 \renewcommand{\footrulewidth}{0.4pt}
+\setlength{\headheight}{14pt}
 
 % Line spacing
 \onehalfspacing
 
-% Graphics path
-\graphicspath{{../outputs/figures/report/}}
+% Graphics paths (generated artifacts)
+\graphicspath{{../outputs/figures/final_report/}{../outputs/figures/mesh_comparisons/}}
 
 % ============================================================================
 % TITLE
 % ============================================================================
-\title{\vspace{-1cm}\textbf{High-Fidelity Mesh Smoothing for Medical Brain MRI Data}\\ \large Semantic-Aware Surface Reconstruction with Volume Preservation}
+
+% Manual title strings (avoid issues with escaped control sequences)
+\newcommand{\ReportTitle}{High-Fidelity Feature-Preserving Mesh Smoothing for Brain Tumor Segmentation}
+\newcommand{\ReportSubtitle}{Comparative Evaluation on 20 BraTS Cases}
 
 \author{Shubham Vikas Mhaske \\ \textit{Department of Computer Science and Engineering} \\ \textit{Texas A\&M University} \\ \texttt{shubhammhaske@tamu.edu} \\ NetID: 334003509}
 
@@ -71,17 +75,30 @@
 % ============================================================================
 \begin{document}
 
-\maketitle
-\thispagestyle{fancy}
+\begin{center}
+{\LARGE\textbf{\ReportTitle}}\\[0.35em]
+{\large \ReportSubtitle}\\[0.85em]
+{\normalsize Shubham Vikas Mhaske}\\
+{\textit{Department of Computer Science and Engineering, Texas A\&M University}}\\
+	exttt{shubhammhaske@tamu.edu}\\
+NetID: 334003509\\[0.75em]
+{\normalsize CSCE 645: Geometric Modeling -- Fall 2025\\ Instructor: Professor John Keyser\\ \today}
+\end{center}
+
+	hispagestyle{fancy}
 
 % ----------------------------------------------------------------------------
 % ABSTRACT
 % ----------------------------------------------------------------------------
 \begin{abstract}
-This project presents a comprehensive mesh smoothing pipeline for medical brain MRI segmentation data, specifically targeting the BraTS 2023 (Brain Tumor Segmentation) challenge dataset. The primary objective is to transform voxelized 3D segmentation masks into smooth, high-quality surface meshes suitable for clinical visualization and surgical planning while preserving anatomically significant features at tumor boundaries. We implement and evaluate multiple smoothing algorithms including Laplacian smoothing, Taubin's $\lambda|\mu$ smoothing, bilateral filtering, and semantic-aware variants that respect label boundaries. Our key contribution is a semantic-aware Taubin smoothing approach that achieves \textbf{+0.034\% mean volume change} across 5 samples (near-perfect preservation) with \textbf{+15.0\% mean mesh quality improvement} and \textbf{30.3\% curvature variance reduction}. The pipeline was validated on 5 distinct BraTS samples with varying mesh complexities (36,797--67,459 vertices), demonstrating consistent performance with volume changes ranging from +0.022\% to +0.043\%. The vectorized implementation processes meshes with 118,000+ vertices in under 80 milliseconds, enabling real-time interactive visualization through a Streamlit-based web application.
+This project presents a mesh smoothing pipeline for medical brain MRI segmentation data from the BraTS dataset. Starting from voxelized 3D tumor masks, we extract surface meshes via Marching Cubes and apply smoothing to remove staircase artifacts while preserving clinically relevant geometry.
+
+We evaluate five methods on \textbf{20 BraTS cases} (5 BraTS-GLI + 15 BraTS2021): two classical baselines (Laplacian, Taubin $\lambda|\mu$) and three feature-preserving methods developed in this project (Geodesic Heat Diffusion, Information-Theoretic Smoothing, and Anisotropic Tensor Smoothing). Metrics include \textbf{volume change} (\%), \textbf{smoothness reduction} (\%), \textbf{triangle aspect-ratio improvement} (\%), and \textbf{runtime} (ms).
+
+Across 20 cases, Laplacian and Geodesic Heat achieve the strongest smoothing (\textbf{97.45\%} and \textbf{97.01\%} smoothness reduction) but introduce shrinkage (\textbf{-0.92\%} and \textbf{-0.82\%} mean volume change). Taubin and Information-Theoretic provide near volume neutrality (\textbf{+0.056\%} and \textbf{+0.042\%}) with strong smoothing (\textbf{88.96\%} and \textbf{84.35\%}) and fast runtimes (\textbf{24.6ms} and \textbf{44.4ms}). Anisotropic Tensor best preserves volume (\textbf{-0.022\%}) and minimizes distortion (lowest AR change) but is slower (\textbf{126.0ms} mean, up to \textbf{328.8ms}) and less aggressive in smoothing (\textbf{59.52\%}).
 \end{abstract}
 
-\textbf{Keywords:} Mesh smoothing, Taubin smoothing, medical imaging, brain tumor segmentation, volume preservation, BraTS, surface reconstruction
+	extbf{Keywords:} Mesh smoothing, volume preservation, medical imaging, brain tumor segmentation, BraTS, surface reconstruction
 
 % ----------------------------------------------------------------------------
 % 1. INTRODUCTION
@@ -114,12 +131,11 @@ The fundamental challenge in mesh smoothing for medical applications is balancin
 
 This project makes the following key contributions:
 \begin{enumerate}[noitemsep]
-    \item \textbf{Algorithm Suite:} Implementation and comparative evaluation of four smoothing algorithms---Laplacian, Taubin $\lambda|\mu$, bilateral filtering, and semantic-aware variants---with comprehensive parameter analysis
-    \item \textbf{Curvature Analysis:} Vectorized discrete curvature computation using cotangent Laplacian (mean curvature $H$) and angle defect (Gaussian curvature $K$) achieving 0.08s computation on 118K vertices
-    \item \textbf{Semantic Preservation:} Novel semantic-aware smoothing variant with tunable cross-label weight ($w_{\text{cross}}=0.3$) that preserves tumor boundaries while aggressively smoothing homogeneous regions
-    \item \textbf{Validation Framework:} Multi-sample validation on 5 distinct BraTS samples demonstrating consistent performance: $0.034\% \pm 0.008\%$ volume change, $15.0\% \pm 1.5\%$ AR improvement
-    \item \textbf{Interactive Application:} Streamlit-based web application with real-time 3D visualization, parameter controls, and mesh export (OBJ, STL, PLY formats)
-    \item \textbf{Publication-Quality Visualization:} Plotly-based 3D mesh rendering with proper lighting (ambient, diffuse, specular) for scientific figures
+    \item \textbf{Algorithm Suite:} Implementation and comparative evaluation of five smoothing methods: Laplacian, Taubin $\lambda|\mu$, and three feature-preserving approaches (Geodesic Heat, Information-Theoretic, Anisotropic Tensor)
+    \item \textbf{Evaluation on 20 cases:} End-to-end benchmarking on 20 BraTS meshes (5 BraTS-GLI + 15 BraTS2021) with consistent metrics (volume change, smoothness reduction, aspect ratio change, runtime)
+    \item \textbf{Efficient implementation:} Vectorized sparse-matrix implementations enabling per-mesh runtimes in the tens of milliseconds for most methods
+    \item \textbf{3D visualization artifacts:} Publication-ready figures and before/after mesh snapshots with consistent lighting and camera settings
+    \item \textbf{Interactive application:} Streamlit-based interface for loading NIfTI masks, selecting algorithms/parameters, and exporting smoothed meshes
 \end{enumerate}
 
 % ----------------------------------------------------------------------------
@@ -174,7 +190,7 @@ where $\theta_j$ are the interior angles at vertex $i$ in incident triangles.
 
 \subsection{BraTS Dataset}
 
-The Brain Tumor Segmentation (BraTS) Challenge~\cite{baid2021rsna} provides multi-institutional MRI scans with expert annotations of glioma sub-regions. The BraTS 2023 dataset includes over 1,250 cases with four MRI modalities: T1-weighted (T1), T1 with gadolinium contrast (T1ce), T2-weighted (T2), and T2-FLAIR.
+The Brain Tumor Segmentation (BraTS) Challenge~\cite{baid2021rsna} provides multi-institutional MRI scans with expert annotations of glioma sub-regions. In this project we evaluate meshes extracted from 20 cases spanning two naming conventions present in our data: 5 ``BraTS-GLI'' cases and 15 ``BraTS2021'' cases.
 
 The segmentation masks include:
 \begin{itemize}[noitemsep]
@@ -183,21 +199,25 @@ The segmentation masks include:
     \item \textbf{Label 3:} GD-enhancing tumor (ET) -- actively growing tumor tissue
 \end{itemize}
 
-In this project, we focus on Label 1 (necrotic tumor core) as it presents the most challenging smoothing scenario with complex geometry and clinical significance for volumetric assessment. The 5 samples used for validation span different patients and tumor configurations:
+In this project, we focus on Label 1 (necrotic tumor core) as it presents a challenging smoothing scenario with complex geometry and clinical significance for volumetric assessment.
+
+The 20 evaluated cases include:
+\begin{itemize}[noitemsep]
+    \item \textbf{BraTS-GLI:} BraTS-GLI-00001-000, BraTS-GLI-00001-001, BraTS-GLI-00013-000, BraTS-GLI-00013-001, BraTS-GLI-00015-000
+    \item \textbf{BraTS2021:} BraTS2021\_00000, \_00002, \_00003, \_00005, \_00006, \_00008, \_00009, \_00011, \_00012, \_00014, \_00016, \_00017, \_00018, \_00019, \_00020
+\end{itemize}
 
 \begin{table}[H]
 \centering
-\caption{BraTS samples used for validation}
+\caption{Mesh complexity statistics for the 20 evaluated BraTS cases}
 \label{tab:samples}
 \begin{tabular}{@{}lrrr@{}}
-\toprule
-\textbf{Sample ID} & \textbf{Vertices} & \textbf{Faces} & \textbf{Volume (mm³)} \\
+	oprule
+	extbf{Statistic} & \textbf{Vertices} & \textbf{Faces} & \textbf{Volume (mm$^3$)} \\
 \midrule
-BraTS-GLI-00001-000 & 52,310 & 104,764 & 297,770 \\
-BraTS-GLI-00001-001 & 63,802 & 128,036 & 432,521 \\
-BraTS-GLI-00013-000 & 36,797 & 73,642 & 232,870 \\
-BraTS-GLI-00013-001 & 38,523 & 77,086 & 269,177 \\
-BraTS-GLI-00015-000 & 67,459 & 134,922 & 578,389 \\
+Minimum & 5,980 & 11,952 & 18,426 \\
+Mean & 45,876 & 91,747 & 488,596 \\
+Maximum & 118,766 & 237,528 & 1,639,347 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -223,8 +243,8 @@ Our processing pipeline consists of five stages, as illustrated in Figure~\ref{f
     \item \textbf{NIfTI Loading:} Load 3D segmentation masks from NIfTI format with affine transformation
     \item \textbf{Volume Processing:} Coarsen label volume to reduce memory requirements while preserving boundaries
     \item \textbf{Marching Cubes:} Extract isosurface at threshold 0.5 using scikit-image implementation
-    \item \textbf{Mesh Smoothing:} Apply selected algorithm (Laplacian, Taubin, or semantic-aware variant)
-    \item \textbf{Quality Metrics:} Compute volume change, aspect ratio, curvature correlation, Hausdorff distance
+    \item \textbf{Mesh Smoothing:} Apply selected algorithm (Laplacian, Taubin, Geodesic Heat, Info-Theoretic, or Anisotropic)
+    \item \textbf{Quality Metrics:} Compute volume change, smoothness reduction, aspect ratio change, and runtime
 \end{enumerate}
 
 \subsection{Implemented Algorithms}
@@ -232,24 +252,17 @@ Our processing pipeline consists of five stages, as illustrated in Figure~\ref{f
 \subsubsection{Laplacian Smoothing}
 Standard iterative vertex averaging as described in Equation~\ref{eq:laplacian}, with $\lambda = 0.5$.
 
-\subsubsection{Taubin $\lambda|\mu$ Smoothing}
+\subsubsection{Taubin \texorpdfstring{$\lambda|\mu$}{lambda|mu} Smoothing}
 Two-step volume-preserving smoothing as described in Equations~\ref{eq:taubin1}-\ref{eq:taubin2}, with $\lambda = 0.5$ and $\mu = -0.53$.
 
-\subsubsection{Semantic-Aware Smoothing}
-We extend Taubin smoothing to incorporate semantic information by modifying the adjacency weights:
+\subsubsection{Geodesic Heat Diffusion (Ours)}
+We implement a feature-preserving smoothing strategy inspired by heat diffusion on surfaces. Intuitively, the heat kernel defines an intrinsic notion of locality on the surface; vertex updates are guided by diffusion while respecting geodesic structure.
 
-\begin{equation}
-    w_{ij} = \begin{cases}
-        1.0 & \text{if } \ell(v_i) = \ell(v_j) \\
-        w_{\text{cross}} & \text{if } \ell(v_i) \neq \ell(v_j)
-    \end{cases}
-    \label{eq:semantic_weight}
-\end{equation}
+\subsubsection{Information-Theoretic Smoothing (Ours)}
+This method adapts smoothing strength based on information content in local geometric neighborhoods, reducing smoothing in regions that appear structurally informative while still removing voxel staircase artifacts.
 
-where $\ell(v)$ denotes the label of vertex $v$ and $w_{\text{cross}} = 0.3$ is the cross-label weight. This reduces smoothing at label boundaries, preserving anatomically significant transitions.
-
-\subsubsection{Additional Algorithms}
-We also implemented bilateral smoothing~\cite{fleishman2003bilateral} and curvature-guided adaptive smoothing for comparison.
+\subsubsection{Anisotropic Tensor Smoothing (Ours)}
+Anisotropic smoothing applies direction-dependent filtering using a local tensor field, aiming to preserve sharp geometric features while smoothing along directions consistent with the surface.
 
 \subsection{Quality Metrics}
 
@@ -261,10 +274,10 @@ We also implemented bilateral smoothing~\cite{fleishman2003bilateral} and curvat
 \toprule
 \textbf{Metric} & \textbf{Description} & \textbf{Target} \\
 \midrule
-Volume Change (\%) & Relative change in enclosed volume & $< 1\%$ \\
-Aspect Ratio Improvement (\%) & Improvement in triangle quality & Maximize \\
-Curvature Correlation & Pearson correlation of $H$ before/after & $> 0.1$ \\
-Hausdorff Distance (mm) & Maximum surface deviation & Minimize \\
+Volume Change (\%) & Relative change in enclosed volume (signed) & $|\Delta V|$ small \\
+Smoothness Reduction (\%) & Reduction of curvature/noise proxy & Maximize \\
+AR Change (\%) & Change in mean triangle aspect ratio & Maximize \\
+Runtime (ms) & Wall-clock time per mesh & Minimize \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -327,222 +340,101 @@ The Streamlit application provides:
 
 \subsection{Dataset and Setup}
 
-Experiments were conducted on two medical imaging datasets:
-\begin{itemize}[noitemsep]
-    \item \textbf{BraTS MRI (10 samples):} Brain tumor samples (5 BraTS-GLI + 5 BraTS2021) with mesh sizes ranging from 14,673 to 67,459 vertices (mean: 38,650 vertices)
-    \item \textbf{CT Hemorrhage Dataset (6 samples):} Intracranial hemorrhage cases with mesh sizes ranging from 560 to 45,107 vertices (mean: 13,365 vertices)
-\end{itemize}
+Experiments were conducted on \textbf{20 BraTS cases} (Table~\ref{tab:samples}). For each case, we extract a surface mesh from the segmentation mask and apply five smoothing methods. Unless otherwise noted, all metrics are reported as averages across the 20 cases.
 
-This dual-dataset approach validates algorithm performance across different imaging modalities, anatomical structures, and mesh complexities. The comprehensive evaluation across \textbf{16 samples} (10 MRI + 6 CT) provides robust validation of algorithm behavior. MRI meshes are 2.9× larger than CT on average, testing algorithms across different geometric complexity scales. All tests used algorithm-specific iteration counts (Taubin: 10 iterations, Laplacian: 3 iterations, Novel algorithms: 5-8 iterations) optimized for convergence.
+\subsection{Quantitative Results (n=20)}
 
-\subsection{Extended Algorithm Comparison}
-
-We evaluated five algorithms---two baseline methods (Taubin, Laplacian) and three novel feature-preserving algorithms (Geodesic Heat Diffusion, Information-Theoretic Smoothing, Anisotropic Tensor Smoothing)---across five comprehensive metrics.
-
-\subsubsection{MRI Brain Tumor Results}
-
-Table~\ref{tab:results_mri} presents comprehensive multi-metric results on MRI brain tumor data:
+Table~\ref{tab:results_summary} summarizes the aggregate performance.
 
 \begin{table}[H]
 \centering
-\caption{Comprehensive algorithm comparison on MRI brain tumor data (n=10 samples, mean 38,650 vertices)}
-\label{tab:results_mri}
-\begin{tabular}{@{}lrrrrr@{}}
-\toprule
-\textbf{Algorithm} & \textbf{Smoothness} & \textbf{Volume Pres.} & \textbf{Quality} & \textbf{Displacement} & \textbf{Time} \\
- & \textbf{Improv. (\%)} & \textbf{(\%)} & \textbf{(0-1)} & \textbf{(mm)} & \textbf{(ms)} \\
+\caption{Aggregate results across 20 BraTS cases (mean $\pm$ std). Runtime also shows min--max in parentheses.}
+\label{tab:results_summary}
+\begin{tabular}{@{}lrrrr@{}}
+	oprule
+	extbf{Algorithm} & \textbf{$\Delta$Volume (\%)} & \textbf{Smoothness Red. (\%)} & \textbf{AR Change (\%)} & \textbf{Time (ms)} \\
 \midrule
-Taubin & $+86.8$ & 98.5 & 0.825 & 0.518 & 41 \\
-Laplacian & $+70.0$ & 99.8 & 0.732 & 0.248 & 22 \\
-\midrule
-\textit{Geodesic Heat} & $+68.9$ & \textbf{99.3} & \textbf{0.803} & \textbf{0.387} & 9,678 \\
-\textit{Info-Theoretic} & $+34.2$ & \textbf{100.0} & 0.636 & \textbf{0.107} & 15,976 \\
-\textit{Anisotropic} & $+16.6$ & \textbf{99.9} & 0.654 & \textbf{0.070} & 35,434 \\
+Laplacian & $-0.92 \pm 0.79$ & $97.45 \pm 0.78$ & $58.03 \pm 108.72$ & $17.21$ (2.61--43.60) \\
+Taubin & $+0.06 \pm 0.05$ & $88.96 \pm 1.93$ & $13.47 \pm 0.34$ & $24.57$ (4.20--62.91) \\
+	extit{Geodesic Heat (Ours)} & $-0.82 \pm 0.71$ & $97.01 \pm 0.91$ & $53.41 \pm 100.38$ & $27.06$ (4.20--69.84) \\
+	extit{Info-Theoretic (Ours)} & $+0.04 \pm 0.04$ & $84.35 \pm 2.24$ & $12.24 \pm 0.28$ & $44.40$ (6.46--114.95) \\
+	extit{Anisotropic (Ours)} & $-0.02 \pm 0.02$ & $59.52 \pm 1.84$ & $10.06 \pm 0.22$ & $126.05$ (17.12--328.81) \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\textbf{Key Findings (MRI):}
+	extbf{Key trends:}
 \begin{itemize}[noitemsep]
-    \item \textbf{Geodesic Heat} achieves \textbf{68.9\% smoothing}, nearly matching Laplacian (70.0\%) while preserving 99.3\% volume with 25\% less displacement (0.387mm vs 0.518mm Taubin). Validated across \textbf{10 diverse MRI samples} (14,673--67,459 vertices).
-    \item \textbf{Information-Theoretic} provides \textbf{perfect volume preservation (100.0\%)} across all 10 samples with minimal displacement (0.107mm), ideal for clinical volumetric measurements and longitudinal monitoring
-    \item \textbf{Anisotropic Tensor} is most conservative (0.070mm displacement), best for preserving fine anatomical boundaries while achieving 99.9\% volume preservation
-    \item Novel algorithms achieve \textbf{mesh quality competitive with baselines} (0.636-0.803 vs 0.732-0.825) while using significantly less vertex movement, demonstrating feature preservation
+    \item \textbf{Smoothing strength:} Laplacian and Geodesic Heat achieve the highest smoothness reduction ($\approx 97\%$) but also the highest shrinkage.
+    \item \textbf{Volume neutrality:} Taubin and Info-Theoretic are near volume-neutral (mean $|\Delta V| < 0.1\%$) while still producing strong smoothing.
+    \item \textbf{Runtime:} Laplacian/Taubin/Geodesic run in tens of milliseconds; Info-Theoretic is typically sub-100ms; Anisotropic is slower and has the highest variance.
 \end{itemize}
 
-\subsubsection{CT Hemorrhage Results}
-
-Table~\ref{tab:results_ct} presents results on CT hemorrhage data with smaller mesh sizes:
-
-\begin{table}[H]
-\centering
-\caption{Comprehensive algorithm comparison on CT hemorrhage data (n=6 samples, mean 13,365 vertices)}
-\label{tab:results_ct}
-\begin{tabular}{@{}lrrrrr@{}}
-\toprule
-\textbf{Algorithm} & \textbf{Smoothness} & \textbf{Volume Pres.} & \textbf{Quality} & \textbf{Displacement} & \textbf{Time} \\
- & \textbf{Improv. (\%)} & \textbf{(\%)} & \textbf{(0-1)} & \textbf{(mm)} & \textbf{(ms)} \\
-\midrule
-Taubin & $+72.1$ & 77.7 & 0.592 & 1.076 & 13 \\
-Laplacian & $+45.6$ & 94.3 & 0.565 & 0.381 & 7 \\
-\midrule
-\textit{Geodesic Heat} & $+5.3$ & \textbf{88.1} & \textbf{0.596} & \textbf{0.501} & 3,333 \\
-\textit{Info-Theoretic} & $+19.7$ & \textbf{99.8} & 0.469 & \textbf{0.142} & 5,473 \\
-\textit{Anisotropic} & $+5.5$ & \textbf{98.0} & 0.443 & \textbf{0.068} & 12,085 \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\textbf{Key Findings (CT):}
-\begin{itemize}[noitemsep]
-    \item \textbf{Taubin baseline suffers 22.3\% volume loss} on small CT meshes (77.7\% preservation), validated across \textbf{6 CT samples} ranging from 560 to 45,107 vertices. This mesh-size dependency makes Taubin unsuitable for clinical volumetric analysis of small lesions.
-    \item \textbf{Novel algorithms excel at volume preservation:} Info-Theoretic 99.8\%, Anisotropic 98.0\% vs Taubin 77.7\%, showing only 0.2\% difference from MRI performance (100.0\% vs 99.8\%)
-    \item \textbf{Trade-off validated:} Novel algorithms preserve anatomy (high volume, low displacement) at cost of less aggressive smoothing (+5-20\% vs +72\%), prioritizing anatomical fidelity over noise removal
-    \item \textbf{Information-Theoretic most balanced:} 19.7\% smoothing improvement with 99.8\% volume preservation and minimal 0.142mm displacement
-\end{itemize}
-
-Figure~\ref{fig:comparison} visualizes the comparative performance across metrics:
+Figure~\ref{fig:comparison} visualizes the aggregate comparison across metrics:
 
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.95\textwidth]{fig1_algorithm_comparison.png}
-    \caption{Algorithm comparison: (a) Volume preservation---Taubin achieves near-zero change while Laplacian causes shrinkage; (b) Mesh quality improvement---both algorithms significantly improve aspect ratio; (c) Feature preservation---Taubin maintains higher curvature correlation.}
+    \caption{Aggregate comparison across 20 BraTS cases. Metrics summarize signed volume change (\%), smoothness reduction (\%), aspect ratio change (\%), and runtime (ms).}
     \label{fig:comparison}
 \end{figure}
 
-\subsection{Curvature Analysis}
-
-Figure~\ref{fig:curvature} shows the distribution of mean and Gaussian curvature before and after Taubin smoothing:
+\subsection{Trade-offs and Pareto Structure}
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.95\textwidth]{fig2_curvature_distribution.png}
-    \caption{Curvature distribution analysis: (a,b) Mean curvature $H$ shows reduced variance after smoothing while maintaining overall distribution shape; (c,d) Gaussian curvature $K$ shows similar behavior, with the peak near zero preserved.}
-    \label{fig:curvature}
+    \includegraphics[width=0.95\textwidth]{fig2_tradeoff_scatter.png}
+    \caption{Trade-off scatter plot across 20 cases, illustrating the relationship between smoothing strength, volume change, and runtime.}
+    \label{fig:tradeoff}
 \end{figure}
-
-Key curvature statistics:
-\begin{itemize}[noitemsep]
-    \item Original: $H = 0.302 \pm 0.297$, $K = 0.010 \pm 0.210$
-    \item After Taubin: Reduced variance while maintaining mean values
-    \item Computation time: 0.081s for $H$, 0.082s for $K$ (118k vertices)
-\end{itemize}
-
-\subsection{Mesh Quality Improvement}
-
-Figure~\ref{fig:aspect_ratio} demonstrates the improvement in triangle aspect ratios:
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.85\textwidth]{fig3_aspect_ratio.png}
-    \caption{Aspect ratio distribution before and after Taubin smoothing. The distribution shifts toward the ideal value of 1.0 (equilateral triangles), with mean AR improving from 1.583 to 1.376 (13.1\% improvement).}
-    \label{fig:aspect_ratio}
+    \includegraphics[width=0.95\textwidth]{fig3_radar_comparison.png}
+    \caption{Radar summary of normalized metrics across all five algorithms (higher is better after normalization).}
+    \label{fig:radar}
 \end{figure}
-
-\subsection{Convergence Analysis}
-
-Figure~\ref{fig:convergence} shows how volume change and mesh quality evolve with iteration count:
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.85\textwidth]{fig4_convergence.png}
-    \caption{Convergence analysis over iterations: (a) Laplacian causes cumulative volume loss while Taubin remains stable within $\pm 1\%$; (b) Both algorithms show diminishing returns in quality improvement beyond 15-20 iterations.}
-    \label{fig:convergence}
+    \includegraphics[width=0.95\textwidth]{fig4_processing_time.png}
+    \caption{Runtime distribution across 20 cases. Most methods run in the tens of milliseconds; Anisotropic is slower and more variable.}
+    \label{fig:runtime}
 \end{figure}
-
-\subsection{Visual Comparison}
-
-Figure~\ref{fig:mesh_curvature} shows the 3D mesh surface rendered with proper lighting, colored by mean curvature before and after Taubin smoothing:
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.98\textwidth]{fig5_curvature_plotly.png}
-    \caption{Mean curvature comparison with 3D lighting: Left shows the original mesh from Marching Cubes with high curvature variation (red = high, blue = low); Right shows the smoothed result with 39.9\% reduction in curvature variation while preserving overall surface shape. Visualization uses Plotly with ambient, diffuse, and specular lighting for publication-quality rendering.}
-    \label{fig:mesh_curvature}
+    \includegraphics[width=0.95\textwidth]{fig5_novelty_diagram.png}
+    \caption{Positioning of the three proposed methods relative to classical baselines, highlighting differing trade-offs between feature preservation, smoothing strength, and compute cost.}
+    \label{fig:novelty}
 \end{figure}
 
-Figure~\ref{fig:mesh_aspect} demonstrates the improvement in triangle quality (aspect ratio) with 3D lighting:
+\subsection{Qualitative Mesh Comparisons}
+Figure~\ref{fig:mesh_compare} shows representative before/after mesh visualizations on a BraTS case.
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.98\textwidth]{fig5_aspect_ratio_plotly.png}
-    \caption{Triangle aspect ratio improvement: Yellow indicates high-quality triangles (AR $\approx 1.0$, equilateral), while purple indicates elongated triangles. The smoothed mesh achieves 14.0\% improvement in mean aspect ratio, resulting in better mesh quality for downstream applications.}
-    \label{fig:mesh_aspect}
+    \begin{subfigure}{0.49\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{BraTS-GLI-00013-001_taubin_comparison_close.png}
+        \caption{Original vs Taubin}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}{0.49\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{BraTS-GLI-00013-001_all_algorithms_close.png}
+        \caption{Original + all algorithms}
+    \end{subfigure}
+    \caption{Close-up mesh snapshots with consistent camera/lighting. These visuals complement the quantitative metrics by showing how each method removes voxel staircase artifacts while affecting volume and fine-scale geometry.}
+    \label{fig:mesh_compare}
 \end{figure}
-
-Figure~\ref{fig:mesh_combined} provides a combined 2$\times$2 grid view showing both metrics:
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.95\textwidth]{fig5_mesh_comparison_plotly.png}
-    \caption{Combined visualization: Top row shows mean curvature comparison (RdYlBu colormap), bottom row shows aspect ratio comparison (Viridis colormap). Taubin $\lambda|\mu$ smoothing achieves curvature $\sigma$ reduction from 0.3084 to 0.1852 ($-$39.9\%) and mean AR improvement from 0.654 to 0.746 (+14.0\%).}
-    \label{fig:mesh_combined}
+    \includegraphics[width=0.98\textwidth]{fig7_summary_table.png}
+    \caption{Summary table figure aggregating the main metrics across all algorithms.}
+    \label{fig:summary_table}
 \end{figure}
-
-\subsection{Cross-Dataset Performance Analysis}
-
-\subsubsection{Mesh Size Dependency}
-
-Table~\ref{tab:mesh_size} analyzes how algorithm performance varies with mesh complexity:
-
-\begin{table}[H]
-\centering
-\caption{Algorithm performance vs mesh size across 16 samples (10 MRI + 6 CT)}
-\label{tab:mesh_size}
-\begin{tabular}{@{}lrrrr@{}}
-\toprule
-\textbf{Dataset} & \textbf{Vertex Range} & \textbf{Mean} & \textbf{Taubin Vol} & \textbf{Novel Vol} \\
- & & \textbf{Vertices} & \textbf{Pres. (\%)} & \textbf{Pres. (\%)} \\
-\midrule
-Small CT & 560--10,241 & 6,817 & 72.1 & 95.3 \\
-Large CT & 45,107 & 45,107 & 89.8 & 98.7 \\
-\midrule
-MRI (All 10 samples) & 14,673--67,459 & 38,650 & 98.5 & 99.7 \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\textbf{Critical Insight:} Comprehensive evaluation across \textbf{16 samples (10 MRI + 6 CT)} reveals clear mesh-size dependency patterns. MRI tumors average 38,650 vertices (2.9× larger than CT's 13,365), providing sufficient geometric complexity for novel algorithms to distinguish anatomical features from noise. Novel algorithms excel on large meshes: Info-Theoretic achieves 100.0\% volume preservation on MRI while Geodesic Heat reaches 68.9\% smoothing (competitive with Laplacian's 70.0\%). \textbf{Taubin shows critical mesh-size dependency:} 98.5\% volume preservation on MRI vs 77.7\% on CT (20.8\% difference), making it unsuitable for multi-modal clinical workflows requiring consistent measurements.
-
-\subsubsection{Multi-Sample Validation on BraTS Dataset}
-
-To validate the robustness of our approach, we evaluated the Taubin $\lambda|\mu$ smoothing algorithm across 5 distinct BraTS samples with varying mesh complexities. Figure~\ref{fig:validation} presents comprehensive results:
-
-\begin{figure}[H]
-    \centering
-    \includegraphics[width=0.98\textwidth]{fig7_multi_sample.png}
-    \caption{Multi-sample validation across 5 BraTS samples: (a)~Volume preservation showing before/after comparison---all samples achieve $<0.05\%$ volume change with mean $+0.034\%$; (b)~Aspect ratio improvement ranging from $+12.6\%$ to $+16.6\%$ with mean $+15.0\%$; (c)~Curvature smoothness improvement ranging from $-20.8\%$ to $-38.4\%$; (d)~Statistical summary table with mean, standard deviation, and pass/fail status for each metric.}
-    \label{fig:validation}
-\end{figure}
-
-Table~\ref{tab:validation_detailed} provides detailed per-sample results:
-
-\begin{table}[H]
-\centering
-\caption{Detailed validation results per sample}
-\label{tab:validation_detailed}
-\begin{tabular}{@{}lrrrr@{}}
-\toprule
-\textbf{Sample} & \textbf{$\Delta$Volume (\%)} & \textbf{$\Delta$AR (\%)} & \textbf{$\Delta$Curv $\sigma$ (\%)} & \textbf{Status} \\
-\midrule
-BraTS-GLI-00001-000 & $+0.043$ & $+14.0$ & $-27.0$ & \textcolor{green!60!black}{$\checkmark$ Pass} \\
-BraTS-GLI-00001-001 & $+0.030$ & $+12.6$ & $-20.8$ & \textcolor{green!60!black}{$\checkmark$ Pass} \\
-BraTS-GLI-00013-000 & $+0.043$ & $+15.4$ & $-30.6$ & \textcolor{green!60!black}{$\checkmark$ Pass} \\
-BraTS-GLI-00013-001 & $+0.032$ & $+16.6$ & $-34.6$ & \textcolor{green!60!black}{$\checkmark$ Pass} \\
-BraTS-GLI-00015-000 & $+0.022$ & $+16.3$ & $-38.4$ & \textcolor{green!60!black}{$\checkmark$ Pass} \\
-\midrule
-\textbf{Mean $\pm$ Std} & $0.034 \pm 0.008$ & $15.0 \pm 1.5$ & $-30.3 \pm 6.1$ & \textbf{5/5 Pass} \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-Key observations from the validation:
-\begin{itemize}[noitemsep]
-    \item \textbf{Volume Preservation:} All samples achieve $<0.05\%$ volume change, well within the $<1\%$ clinical threshold
-    \item \textbf{Consistent AR Improvement:} Standard deviation of only $\pm 1.5\%$ indicates stable performance
-    \item \textbf{Curvature Smoothing:} Larger meshes (BraTS-GLI-00015-000) show greater curvature reduction, likely due to more high-frequency artifacts
-    \item \textbf{Zero Failures:} All 5 samples pass all quality criteria
-\end{itemize}
 
 % ----------------------------------------------------------------------------
 % 6. DISCUSSION
@@ -550,92 +442,11 @@ Key observations from the validation:
 \section{Discussion}
 \label{sec:discussion}
 
-\subsection{Volume Preservation: Critical Clinical Metric}
+\subsection{Volume Preservation vs. Smoothing Strength}
+The results highlight the classic tension between aggressive smoothing and shape preservation. Laplacian and Geodesic Heat remove the most high-frequency artifacts but also induce the largest negative volume change. Taubin and Info-Theoretic occupy a strong middle ground, providing substantial smoothing with near-zero mean volume change.
 
-\subsubsection{Algorithm Comparison}
-
-Volume preservation is paramount for clinical applications. Table~\ref{tab:volume_clinical} compares algorithms:
-
-\begin{table}[H]
-\centering
-\caption{Volume preservation comparison: clinical suitability analysis}
-\label{tab:volume_clinical}
-\begin{tabular}{@{}lrrrl@{}}
-\toprule
-\textbf{Algorithm} & \textbf{MRI} & \textbf{CT} & \textbf{Overall} & \textbf{Clinical Use} \\
- & \textbf{(\%)} & \textbf{(\%)} & \textbf{Mean (\%)} & \\
-\midrule
-Taubin & 98.6 & 78.0 & 88.3 & \textcolor{orange}{Limited} \\
-Laplacian & 99.8 & 94.3 & 97.1 & \textcolor{green!60!black}{Good} \\
-\midrule
-\textit{Geodesic Heat} & \textbf{99.3} & 88.2 & 93.8 & \textcolor{green!60!black}{Good} \\
-\textit{Info-Theoretic} & \textbf{100.0} & \textbf{99.8} & \textbf{99.9} & \textcolor{green!60!black}{\textbf{Excellent}} \\
-\textit{Anisotropic} & \textbf{99.9} & \textbf{98.0} & \textbf{99.0} & \textcolor{green!60!black}{\textbf{Excellent}} \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\textbf{Critical Findings:}
-\begin{itemize}[noitemsep]
-    \item \textbf{Information-Theoretic achieves 99.9\% overall volume preservation}, exceeding the <1\% clinical threshold by 100x margin
-    \item \textbf{Taubin baseline fails on CT data} with 22\% volume loss, unsuitable for longitudinal tumor monitoring
-    \item \textbf{Novel algorithms maintain consistency across modalities:} 88-100\% preservation on both MRI and CT
-\end{itemize}
-
-\subsubsection{Clinical Applications Enabled}
-
-The demonstrated volume preservation makes novel algorithms suitable for:
-\begin{itemize}[noitemsep]
-    \item \textbf{Tumor Monitoring:} Tracking tumor volume changes over time for treatment response assessment (RECIST criteria require <5\% measurement variation)
-    \item \textbf{Surgical Planning:} Accurate volume estimation for resection planning (error <1mm³ for critical structures)
-    \item \textbf{Radiation Therapy:} Precise target volume definition for dose calculation (0.5\% volume accuracy required)
-    \item \textbf{Multi-Center Studies:} Consistent measurements across institutions for clinical trials
-\end{itemize}
-
-The $\lambda|\mu$ parameter relationship in Taubin smoothing ($\lambda=0.5$, $\mu=-0.53$) theoretically cancels shrinkage, but \textit{our experiments reveal a critical mesh-size dependency}: on small CT meshes (<10K vertices), Taubin loses 22\% volume. Novel algorithms avoid this failure mode through adaptive feature preservation.
-
-\subsection{Mesh Quality vs. Feature Preservation}
-
-An interesting trade-off emerges between mesh quality improvement and feature preservation. Laplacian smoothing achieves slightly higher AR improvement ($+15.6\%$ vs $+13.1\%$) but at the cost of much lower curvature correlation (0.018 vs 0.158). This indicates that Laplacian aggressively smooths away curvature information, resulting in more uniform but less faithful surface representation.
-
-Taubin smoothing provides a better balance, preserving more of the original surface characteristics while still achieving substantial quality improvement.
-
-\subsection{Semantic Boundary Preservation}
-
-The semantic-aware variant with cross-label weight of 0.3 successfully preserves label boundaries while maintaining the same volume and quality metrics as standard Taubin. This is achieved by reducing the influence of neighbors with different labels, preventing the blurring of anatomically significant boundaries.
-
-\subsection{Computational Efficiency and Performance Trade-offs}
-
-\subsubsection{Processing Time Analysis}
-
-Table~\ref{tab:performance} quantifies the computational cost of each algorithm:
-
-\begin{table}[H]
-\centering
-\caption{Processing time comparison (milliseconds per mesh)}
-\label{tab:performance}
-\begin{tabular}{@{}lrrrr@{}}
-\toprule
-\textbf{Algorithm} & \textbf{CT (14K verts)} & \textbf{MRI (51K verts)} & \textbf{Speedup vs} & \textbf{Real-time?} \\
- & & & \textbf{Geodesic} & \\
-\midrule
-Taubin & 8 & 29 & 302x & \textcolor{green!60!black}{Yes (30 FPS)} \\
-Laplacian & 4 & 15 & 585x & \textcolor{green!60!black}{Yes (67 FPS)} \\
-\midrule
-\textit{Geodesic Heat} & 2,510 & 8,770 & 1x & \textcolor{orange}{Marginal} \\
-\textit{Info-Theoretic} & 3,930 & 13,938 & 0.63x & \textcolor{red}{No} \\
-\textit{Anisotropic} & 10,240 & 36,321 & 0.24x & \textcolor{red}{No} \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\textbf{Performance Insights:}
-\begin{itemize}[noitemsep]
-    \item \textbf{Baseline algorithms are 300-600x faster} due to simple neighbor averaging vs complex geometric analysis
-    \item \textbf{Novel algorithms require 2-36 seconds} for feature-preserving smoothing, suitable for offline preprocessing but not interactive manipulation
-    \item \textbf{Processing time scales linearly with mesh size:} Geodesic Heat processes 3,000-3,500 vertices/second across both datasets
-    \item \textbf{Application-dependent trade-off:} Real-time visualization (baselines) vs clinical accuracy (novel algorithms)
-\end{itemize}
+\subsection{Runtime Considerations}
+Across the 20 evaluated cases, Laplacian, Taubin, and Geodesic Heat typically run in tens of milliseconds per mesh. Info-Theoretic is also commonly sub-100ms. Anisotropic is the slowest method and shows higher variance, reaching 300ms+ on the largest meshes.
 
 \subsubsection{Implementation Architecture}
 
@@ -654,8 +465,8 @@ The vectorized implementation using NumPy and SciPy sparse matrices enables effi
 \begin{enumerate}[noitemsep]
     \item \textbf{Manifold Assumption:} The current implementation assumes manifold meshes without boundaries. Non-manifold edges or isolated vertices would require preprocessing.
     \item \textbf{High Curvature Regions:} Extremely high curvature regions (curvature $> 2$ standard deviations) may experience slight feature degradation. This could be addressed with curvature-adaptive iteration counts.
-    \item \textbf{Label Resolution:} Label mapping depends on volumetric resolution of input data. Sub-voxel label boundaries cannot be recovered from the discrete segmentation mask.
-    \item \textbf{Empirical Parameters:} The cross-label weight ($w_{\text{cross}}=0.3$) was determined empirically. An adaptive method based on local curvature or gradient magnitude could improve results.
+    \item \textbf{Label Resolution:} Sub-voxel boundaries cannot be recovered from a discrete segmentation mask; smoothing can only operate on the extracted mesh.
+    \item \textbf{Parameter Sensitivity:} Some methods expose parameters that trade smoothing strength against preservation. A principled, data-driven selection strategy is a promising direction.
     \item \textbf{Memory Scaling:} For meshes exceeding 500K vertices, the sparse matrix operations may require chunked processing or out-of-core algorithms.
     \item \textbf{Multi-Label Boundaries:} Current implementation handles two-label boundaries; extension to three-way junctions (where three labels meet) requires special treatment.
 \end{enumerate}
@@ -666,69 +477,14 @@ The vectorized implementation using NumPy and SciPy sparse matrices enables effi
 \section{Conclusion}
 \label{sec:conclusion}
 
-This project successfully developed and validated a comprehensive mesh smoothing pipeline for medical imaging data across two modalities (MRI brain tumors, CT hemorrhages) with mesh complexities ranging from 560 to 67,459 vertices. We implemented and compared five algorithms---two classical baselines and three novel feature-preserving methods---using five comprehensive metrics (smoothness, volume preservation, mesh quality, displacement, processing time).
+This project developed and evaluated a mesh smoothing pipeline for brain tumor segmentation meshes on \textbf{20 BraTS cases}. We compared two classical baselines (Laplacian and Taubin) with three feature-preserving methods developed in this project (Geodesic Heat, Information-Theoretic, and Anisotropic Tensor). All claims and figures in this report are based on measured runs and generated artifacts.
 
-\subsection{Key Findings and Algorithm Selection}
-
-\subsubsection{Comprehensive Evaluation Results}
-
-\begin{table}[H]
-\centering
-\caption{Summary of objectives and outcomes across 8 total samples (5 CT + 3 MRI)}
-\label{tab:summary}
-\begin{tabular}{@{}llll@{}}
-\toprule
-\textbf{Objective} & \textbf{Target} & \textbf{Best Algorithm} & \textbf{Result} \\
-\midrule
-Volume Preservation & $>99\%$ & Info-Theoretic & 99.9\% \textcolor{green!60!black}{$\checkmark$} \\
-Mesh Quality & Maximize & Taubin & 0.767 \textcolor{green!60!black}{$\checkmark$} \\
-Smoothness & Maximize & Taubin & +80.1\% \textcolor{green!60!black}{$\checkmark$} \\
-Displacement & Minimize & Anisotropic & 0.089mm \textcolor{green!60!black}{$\checkmark$} \\
-Processing Speed & $<100$ms & Laplacian & 10ms \textcolor{green!60!black}{$\checkmark$} \\
-Cross-Dataset Stability & Consistent & Novel Algorithms & \textcolor{green!60!black}{$\checkmark$} \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\subsubsection{Algorithm Selection Guidelines}
-
-Based on comprehensive evaluation, we provide application-specific recommendations:
-
-\begin{enumerate}[noitemsep]
-    \item \textbf{Clinical Volumetric Analysis} (tumor monitoring, surgical planning):
-    \begin{itemize}[noitemsep]
-        \item \textbf{Recommended:} Information-Theoretic Smoothing
-        \item \textbf{Rationale:} 99.9\% volume preservation, 0.1mm displacement, consistent across modalities
-        \item \textbf{Trade-off:} 33.2\% smoothing (moderate) vs 13.9s processing time
-    \end{itemize}
-    
-    \item \textbf{Real-Time Visualization} (interactive surgical navigation):
-    \begin{itemize}[noitemsep]
-        \item \textbf{Recommended:} Laplacian Smoothing
-        \item \textbf{Rationale:} 15ms processing (67 FPS), good quality improvement
-        \item \textbf{Trade-off:} Acceptable smoothing but no feature preservation guarantees
-    \end{itemize}
-    
-    \item \textbf{Publication-Quality Rendering} (scientific figures, presentations):
-    \begin{itemize}[noitemsep]
-        \item \textbf{Recommended:} Geodesic Heat Diffusion
-        \item \textbf{Rationale:} 69.6\% smoothing on MRI (competitive with baselines), 99.3\% volume preservation, 0.879 mesh quality
-        \item \textbf{Trade-off:} 8.8s processing time acceptable for offline rendering
-    \end{itemize}
-    
-    \item \textbf{Anatomical Boundary Preservation} (multi-label segmentation):
-    \begin{itemize}[noitemsep]
-        \item \textbf{Recommended:} Anisotropic Tensor Smoothing
-        \item \textbf{Rationale:} Minimal displacement (0.07-0.09mm), 99.0\% volume preservation
-        \item \textbf{Trade-off:} Conservative smoothing (15.5\%), slowest processing (36s)
-    \end{itemize}
-\end{enumerate}
-
-\textbf{Critical Insight:} \textit{No single algorithm is universally optimal.} The choice depends on application requirements:
+\subsection{Practical Recommendations}
 \begin{itemize}[noitemsep]
-    \item \textbf{Maximum Smoothing:} Taubin (80.1\% on MRI) --- but suffers volume loss on small meshes
-    \item \textbf{Maximum Volume Preservation:} Information-Theoretic (99.9\%) --- best for clinical measurements
-    \item \textbf{Best Balance:} Geodesic Heat on MRI (69.6\% smoothing, 99.3\% volume) --- optimal for large complex meshes
+    \item \textbf{Fast smoothing with strong artifact removal:} Laplacian (fastest) or Geodesic Heat (similar smoothness, slightly slower), noting both introduce measurable shrinkage.
+    \item \textbf{Balanced default choice:} Taubin provides strong smoothing with near-zero mean volume change and low runtime.
+    \item \textbf{Volume-first smoothing:} Information-Theoretic offers near volume neutrality with moderate smoothing.
+    \item \textbf{Most conservative updates:} Anisotropic Tensor minimizes distortion and volume change but is slower and less aggressive in smoothing.
 \end{itemize}
 
 \subsection{Future Work}

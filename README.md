@@ -1,29 +1,28 @@
-# Brain Tumor 3D Mesh Smoothing: Novel Algorithm Evaluation
+# Brain Tumor 3D Mesh Smoothing: Volume-Aware Algorithm Evaluation
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-> Comprehensive evaluation of mesh smoothing algorithms for MRI/CT medical imaging with novel information-theoretic approaches
+> Evaluation of mesh smoothing algorithms for medical brain tumor meshes (BraTS), emphasizing volume preservation, feature fidelity, and practical usage guidelines
 
 **Course**: CSCE 645 - Geometric Modeling | **Texas A&M University**  
-**Author**: Shubham Vikas Mhaske | **Term**: Fall 2024
+**Author**: Shubham Vikas Mhaske | **Term**: Fall 2025
 
 ## 🎯 Overview
 
-This project evaluates **5 mesh smoothing algorithms** (2 baseline + 3 novel) on **16 medical samples** (10 MRI brain tumors + 6 CT hemorrhages), discovering critical mesh-size dependencies in traditional methods and validating novel information-theoretic approaches for clinical applications.
+This project evaluates **5 mesh smoothing algorithms** (2 classical baselines + 3 feature-aware methods) on **20 BraTS 2023 brain tumor meshes** spanning **5,990–118,970 vertices** (≈20× complexity variation), focusing on the clinically important trade-off between smoothness and volumetric accuracy.
 
-## ✨ Key Findings
+## ✨ Key Findings (n=20 BraTS 2023)
 
-- **Info-Theoretic Smoothing**: 99.9% volume preservation across modalities (100.0% MRI, 99.8% CT)
-- **Taubin Failure Mode**: 22.3% volume loss on small CT meshes (mesh-size dependent)
-- **Geodesic Heat**: 68.9% smoothing improvement, competitive with Laplacian
-- **Novel Algorithms**: Consistent across modalities (1.1% difference) vs baselines (20.8% difference)
+- **Taubin λ-μ** (recommended for volumetrics): **+0.056% ± 0.047%** mean volume change with strong smoothing
+- **Laplacian** (preview only): best smoothness but **−0.92%** mean volume shrinkage
+- **Semantic-aware smoothing**: large boundary-preservation gains when segmentation labels are available
 
 ## 📊 Features
 
 - **5 Smoothing Algorithms**: Taubin, Laplacian, Geodesic Heat, Info-Theoretic, Anisotropic Tensor
-- **5 Quality Metrics**: Smoothness, Volume Preservation, Mesh Quality, Displacement, Processing Time
-- **Dual-Modality Validation**: MRI (n=10, 38,650 avg vertices) + CT (n=6, 13,365 avg vertices)
+- **Evaluation Metrics (primary)**: Volume change, smoothness, aspect ratio improvement, processing time
+- **Dataset**: BraTS 2023 (n=20)
 - **Interactive Demo**: Streamlit app with real-time 3D visualization
 - **Comprehensive Reports**: Academic paper, website, presentation materials
 
@@ -85,7 +84,7 @@ git clone <repo-url>
 cd project
 pip install -r requirements.txt
 
-# 2. Download data (BraTS MRI + CT samples)
+# 2. Download data (BraTS)
 python scripts/download_data.py
 
 # 3. Run interactive demo
@@ -100,131 +99,45 @@ python scripts/generate_final_figures.py
 
 ## 🧪 Algorithms Evaluated
 
-### Baseline Methods
-**Taubin Smoothing**: Two-step volume-preserving (λ=0.5, μ=-0.53)
-- MRI: 86.8% smoothing, 98.5% volume preservation
-- CT: 72.1% smoothing, **77.7% volume preservation** ⚠️ (22.3% loss on small meshes)
+This repository contains implementations of:
+- **Laplacian smoothing** (baseline)
+- **Taubin λ-μ smoothing** (baseline, volume-aware)
+- **Geodesic Heat smoothing** (feature-aware)
+- **Information-Theoretic smoothing** (feature-aware)
+- **Anisotropic Tensor smoothing** (feature-aware)
 
-**Laplacian Smoothing**: Simple averaging (λ=0.5)
-- MRI: 70.0% smoothing, 99.5% volume preservation
-- CT: 67.1% smoothing, 99.6% volume preservation
+## 📈 Key Results Summary (n=20 BraTS 2023)
 
-### Novel Methods (This Work)
-**Geodesic Heat Smoothing**: Heat diffusion on surface geodesics
-- MRI: **68.9% smoothing**, 99.3% volume preservation
-- CT: 56.8% smoothing, 99.7% volume preservation
+| Algorithm | Volume Δ | Smoothness | Time (ms) | Recommended Use |
+|-----------|----------|------------|-----------|-----------------|
+| **Taubin λ-μ** | **+0.056%** | 89.0% | 25 | Tumor volumetrics |
+| Laplacian | −0.92% | **97.4%** | **17** | Real-time preview only |
+| Geodesic Heat | −0.82% | 97.0% | 27 | Publication figures |
+| Info-Theoretic | +0.042% | 84.4% | 44 | Feature preservation |
+| Anisotropic Tensor | −0.022% | 59.5% | 126 | Extreme volume accuracy |
 
-**Information-Theoretic Smoothing**: Entropy-guided vertex optimization
-- MRI: 34.2% smoothing, **100.0% volume preservation** ✨
-- CT: 19.7% smoothing, **99.8% volume preservation** ✨
-
-**Anisotropic Tensor Smoothing**: Direction-aware feature preservation
-- MRI: 17.2% smoothing, 99.8% volume preservation
-- CT: 13.5% smoothing, 99.9% volume preservation
-
-## 📈 Key Results (16 Samples: 10 MRI + 6 CT)
-
-| Algorithm | Smoothing (MRI/CT) | Volume (MRI/CT) | Processing Time |
-|-----------|-------------------|-----------------|-----------------|
-| **Info-Theoretic** | 34.2% / 19.7% | **100.0%** / **99.8%** | 3.0s / 16.1s |
-| **Geodesic Heat** | **68.9%** / 56.8% | 99.3% / 99.7% | 34.6s / 12.2s |
-| Taubin | 86.8% / 72.1% | 98.5% / 77.7%* | 41ms / 7ms |
-| Laplacian | 70.0% / 67.1% | 99.5% / 99.6% | 15ms / 5ms |
-| Anisotropic | 17.2% / 13.5% | 99.8% / 99.9% | 21.8s / 8.5s |
-
-*⚠️ Critical: Taubin shows 22.3% volume loss on small CT meshes (mesh-size dependency)
-
-### Clinical Implications
-- **Info-Theoretic**: Ideal for clinical workflows requiring strict volume preservation (RECIST criteria)
-- **Geodesic Heat**: Best smoothing quality while maintaining 99%+ volume
-- **Taubin**: Fast but unreliable on small/irregular meshes (CT, surgical resections)
+> Note: The codebase also contains exploratory utilities for other datasets/modalities, but the **final report and headline results** are based on the **n=20 BraTS evaluation** above.
 
 ## 📚 Documentation
 
-- **[docs/README.md](docs/README.md)** - Comprehensive technical documentation with full results
-- **[docs/QUICKSTART.md](docs/QUICKSTART.md)** - User interface guide for Streamlit app
-- **[docs/presentations/PRESENTATION.md](docs/presentations/PRESENTATION.md)** - Final oral presentation (15 min)
-- **[documents/FINAL_PROJECT_REPORT.pdf](documents/FINAL_PROJECT_REPORT.pdf)** - Academic paper (LaTeX)
-- **[website/final_report.html](website/final_report.html)** - Interactive HTML report with visualizations
-
-## 🔬 Usage Examples
-
-### Run Interactive Demo
-```python
-streamlit run app.py
-# 1. Select algorithm from sidebar
-# 2. Upload NIfTI file or use sample data
-# 3. Adjust parameters
-# 4. View real-time 3D visualization
-# 5. Download results as STL
-```
-
-### Programmatic API
-```python
-from src.algorithms.novel_algorithms import (
-    information_theoretic_smoothing,
-    geodesic_heat_smoothing,
-    anisotropic_tensor_smoothing
-)
-from src.algorithms.smoothing import taubin_smoothing, laplacian_smoothing
-
-# Best volume preservation (clinical use)
-smoothed_verts, info = information_theoretic_smoothing(vertices, faces, iterations=10)
-print(f"Volume preservation: {info['volume_preservation']:.1%}")
-
-# Best smoothing quality
-smoothed_verts, info = geodesic_heat_smoothing(vertices, faces, timestep=0.1)
-print(f"Smoothness improvement: {info['smoothness_improvement']:.1%}")
-
-# Fast baseline (beware small meshes)
-smoothed_verts, info = taubin_smoothing(vertices, faces, iterations=10)
-```
-
-## 🔧 Development
-
-```bash
-# Run tests
-python tests/test_pipeline.py
-
-# Format code
-black src/ scripts/ tests/
-
-# Type checking
-mypy src/
-
-# Build documentation
-cd documents && pdflatex FINAL_PROJECT_REPORT.tex
-```
+- **`website/final_report.html`** — Final HTML report (submission-ready)
+- **`academic_presentation.html`** — Slide deck for the 12-minute oral presentation
+- **`SPEAKER_SCRIPT.md`** — Speaker notes (timed for 12 minutes + Q&A)
+- **`docs/presentations/PRESENTATION.md`** — Presentation outline and Q&A prep
 
 ## 📖 Citation
 
 ```bibtex
-@techreport{mhaske2024meshsmoothing,
-  title={Novel Mesh Smoothing Algorithms for Medical Imaging: 
-         A Comprehensive Evaluation on MRI and CT Data},
-  author={Mhaske, Shubham Vikas},
-  year={2024},
-  institution={Texas A&M University},
-  type={Course Project},
-  note={CSCE 645: Geometric Modeling}
+@techreport{mhaske2025meshsmoothing,
+  title        = {High-Fidelity Mesh Smoothing for Medical Brain MRI Data},
+  author       = {Mhaske, Shubham Vikas},
+  year         = {2025},
+  institution  = {Texas A\&M University},
+  type         = {Course Project},
+  note         = {CSCE 645: Geometric Modeling}
 }
 ```
 
-## 📊 Dataset
-
-- **MRI**: BraTS 2021/2023 Brain Tumor Segmentation (10 samples, 38,650 avg vertices)
-- **CT**: Intracranial Hemorrhage Detection (6 samples, 13,365 avg vertices)
-- **Source**: Synapse Medical Imaging Platform (syn64952532)
-- **License**: Academic research only
-
-## 🏆 Project Outcomes
-
-- ✅ Novel discovery: Taubin mesh-size dependency (never reported)
-- ✅ Info-Theoretic: 99.9% volume preservation across modalities
-- ✅ Comprehensive 16-sample validation (MRI + CT)
-- ✅ Application-specific guidelines for clinical adoption
-- ✅ Production-ready Streamlit demo with <1s inference
-
 ---
 
-**Status**: ✅ Complete | **Last Updated**: December 2024 | **Contact**: [GitHub](https://github.com/shubham-mhaske)
+**Status**: ✅ Complete | **Last Updated**: December 2025

@@ -125,32 +125,23 @@ python scripts/experiment_runner.py \
 
 ## 📈 Results
 
-Comprehensive evaluation across **16 samples (10 MRI + 6 CT)** with 5 metrics:
+Comprehensive evaluation across **n=20 BraTS 2023** tumor meshes.
 
-### MRI Brain Tumors (n=10, mean 38,650 vertices)
-| Algorithm | Smoothness | Volume Pres. | Quality | Displacement | Time |
-|-----------|------------|--------------|---------|--------------|------|
-| **Taubin** | +86.8% | 98.5% | 0.825 | 0.518mm | 41ms |
-| **Laplacian** | +70.0% | 99.8% | 0.732 | 0.248mm | 22ms |
-| **Geodesic Heat** | +68.9% | 99.3% | 0.803 | 0.387mm | 9,678ms |
-| **Info-Theoretic** | +34.2% | **100.0%** | 0.636 | 0.107mm | 15,976ms |
-| **Anisotropic** | +16.6% | 99.9% | 0.654 | **0.070mm** | 35,434ms |
+- Mesh sizes range from **5,990–118,970 vertices**.
+- Results summarize **400 measurements** (20 samples × 5 algorithms × 4 metrics).
 
-### CT Hemorrhage (n=6, mean 13,365 vertices)
-| Algorithm | Smoothness | Volume Pres. | Quality | Displacement | Time |
-|-----------|------------|--------------|---------|--------------|------|
-| **Taubin** | +72.1% | ⚠️ 77.7% | 0.592 | 1.076mm | 13ms |
-| **Laplacian** | +45.6% | 94.3% | 0.565 | 0.381mm | 7ms |
-| **Geodesic Heat** | +5.3% | 88.1% | 0.596 | 0.501mm | 3,333ms |
-| **Info-Theoretic** | +19.7% | **99.8%** | 0.469 | 0.142mm | 5,473ms |
-| **Anisotropic** | +5.5% | 98.0% | 0.443 | **0.068mm** | 12,085ms |
+| Algorithm | Volume Δ | Smoothness | Time (ms) | Recommended Use |
+|-----------|----------|------------|-----------|-----------------|
+| **Taubin λ-μ** | **+0.056%** | 89.0% | 25 | Tumor volumetrics |
+| Laplacian | −0.92% | **97.4%** | **17** | Real-time preview only |
+| Geodesic Heat | −0.82% | 97.0% | 27 | Publication figures |
+| Info-Theoretic | +0.042% | 84.4% | 44 | Feature preservation |
+| Anisotropic Tensor | −0.022% | 59.5% | 126 | Extreme volume accuracy |
 
 **Key Findings:**
-- **Info-Theoretic**: 99.9% overall volume preservation (100.0% MRI, 99.8% CT)
-- **Geodesic Heat**: 68.9% smoothing on MRI (matches Laplacian 70.0%)
-- **⚠️ Taubin Limitation**: 22.3% volume loss on small CT meshes (mesh-size dependency)
-- **Novel Algorithms**: 236-476× slower but consistent across modalities
-- **Baselines**: Real-time (7-41ms) for interactive visualization
+- **Taubin λ-μ** provides the most consistent volume behavior while still improving smoothness.
+- **Laplacian** is an excellent “preview” smoother but exhibits measurable shrinkage.
+- **Geodesic Heat** achieves high smoothness with a moderate runtime cost.
 
 ## 🧪 Testing
 

@@ -1,0 +1,827 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Feature-Preserving Mesh Smoothing for Medical Imaging</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.5.0/reveal.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.5.0/theme/white.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=JetBrains+Mono:wght@400&family=Crimson+Pro:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <style>
+        :root {
+            --maroon: #500000;
+            --gold: #d4a843;
+            --success: #2e7d32;
+            --danger: #c62828;
+            --info: #1565c0;
+            --warning: #f57c00;
+        }
+        .reveal { font-family: 'Inter', sans-serif; font-size: 17px; background: #fafafa; }
+        .reveal .slides { text-align: left; }
+        .reveal .slides section { padding: 12px 34px; height: 100%; box-sizing: border-box; }
+        .reveal h1 { font-family: 'Crimson Pro', serif; font-size: 2em; color: var(--maroon); margin-bottom: 0.2em; }
+        .reveal h2 { font-family: 'Crimson Pro', serif; font-size: 1.4em; color: var(--maroon); margin-bottom: 0.4em; padding-bottom: 0.15em; border-bottom: 3px solid var(--gold); display: inline-block; }
+        .reveal h3 { font-size: 0.95em; font-weight: 600; margin: 0.4em 0 0.25em 0; color: #333; }
+        .reveal h4 { font-size: 0.85em; font-weight: 600; margin: 0.3em 0 0.2em 0; color: var(--maroon); }
+        .reveal p { font-size: 0.85em; line-height: 1.4; margin-bottom: 0.4em; }
+        .reveal ul, .reveal ol { font-size: 0.8em; margin-left: 1em; }
+        .reveal li { margin-bottom: 0.25em; line-height: 1.35; }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 8px; align-items: start; }
+        .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 8px; }
+        .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 8px; }
+        .grid-5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 8px; }
+        .card { background: white; border-radius: 6px; padding: 10px 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
+        .card h4 { font-size: 0.8em; font-weight: 600; color: var(--maroon); margin: 0 0 5px 0; }
+        .card p { font-size: 0.72em; color: #555; margin: 0; line-height: 1.35; }
+        .card.success { border-left: 4px solid var(--success); }
+        .card.danger { border-left: 4px solid var(--danger); }
+        .card.info { border-left: 4px solid var(--info); }
+        .card.warning { border-left: 4px solid var(--warning); }
+        .figure { background: white; border-radius: 6px; padding: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); text-align: center; }
+        .figure img { max-width: 100%; max-height: 380px; border-radius: 4px; object-fit: contain; }
+        .figure-lg img { max-height: 430px; }
+        .figure-caption { font-size: 0.6em; color: #888; margin-top: 5px; font-family: 'JetBrains Mono', monospace; }
+        .data-table { width: 100%; font-size: 0.65em; border-collapse: collapse; background: white; border-radius: 6px; overflow: hidden; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
+        .data-table th { background: var(--maroon); color: white; padding: 7px 10px; text-align: left; font-weight: 600; }
+        .data-table td { padding: 6px 10px; border-bottom: 1px solid #eee; }
+        .data-table tr:nth-child(even) { background: #fafafa; }
+        .data-table .best { color: var(--success); font-weight: 700; }
+        .data-table .worst { color: var(--danger); font-weight: 700; }
+        .data-table .highlight-row { background: #fffde7 !important; }
+        .metric-box { background: white; border-radius: 6px; padding: 12px 8px; text-align: center; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
+        .metric-value { font-size: 1.5em; font-weight: 700; color: var(--maroon); line-height: 1; }
+        .metric-label { font-size: 0.55em; color: #555; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+        .metric-detail { font-size: 0.5em; color: #888; margin-top: 2px; }
+        .math-box { background: #f8f6f2; border-left: 4px solid var(--maroon); border-radius: 5px; padding: 10px 12px; margin: 8px 0; }
+        .math-label { font-size: 0.6em; color: var(--gold); font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }
+        .algorithm { background: white; border: 1px solid #ddd; border-radius: 6px; padding: 10px 12px; font-size: 0.7em; }
+        .algorithm-title { font-family: 'Crimson Pro', serif; font-size: 0.95em; font-weight: 600; color: var(--maroon); border-bottom: 2px solid var(--gold); padding-bottom: 4px; margin-bottom: 8px; }
+        .algorithm-line { font-family: 'JetBrains Mono', monospace; font-size: 0.85em; line-height: 1.5; }
+        .algorithm-line .num { color: #888; display: inline-block; width: 18px; }
+        .algorithm-line .keyword { color: var(--maroon); font-weight: 600; }
+        .algorithm-line .comment { color: #888; font-style: italic; }
+        .callout { background: linear-gradient(135deg, var(--maroon) 0%, #6a1b1b 100%); color: white; padding: 12px 15px; border-radius: 6px; margin: 8px 0; }
+        .callout p { margin: 0; font-size: 0.8em; color: white; }
+        .title-slide { display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; height: 100%; }
+        .title-slide h1 { font-size: 2.3em; margin-bottom: 0.15em; }
+        .title-slide .subtitle { font-size: 1em; color: #555; margin-bottom: 1.2em; }
+        .slide-footer { position: absolute; bottom: 8px; left: 34px; right: 34px; font-size: 0.55em; color: #888; display: flex; justify-content: space-between; }
+        .slide-footer.light { color: rgba(255,255,255,0.75); }
+        .text-success { color: var(--success); }
+        .text-danger { color: var(--danger); }
+        .text-info { color: var(--info); }
+        .text-warning { color: var(--warning); }
+        .mt-1 { margin-top: 8px; }
+        .mt-2 { margin-top: 12px; }
+        .small-text { font-size: 0.75em; }
+        .tiny-text { font-size: 0.65em; }
+        .sample-card { background: white; border-radius: 5px; padding: 8px; text-align: center; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+        .sample-card .name { font-weight: 600; font-size: 0.7em; color: var(--maroon); }
+        .sample-card .stat { font-size: 0.6em; color: #666; margin-top: 3px; }
+        .qa-slide { display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; height: 100%; background: linear-gradient(135deg, var(--maroon) 0%, #6a1b1b 100%); }
+        .qa-slide h1 { color: white; font-size: 2.3em; }
+        .qa-slide p { color: rgba(255,255,255,0.9); font-size: 1.1em; }
+        .code-box { background: #1e1e1e; color: #d4d4d4; border-radius: 5px; padding: 10px; font-family: 'JetBrains Mono', monospace; font-size: 0.65em; overflow-x: auto; }
+        .code-box .keyword { color: #569cd6; }
+        .code-box .string { color: #ce9178; }
+        .code-box .comment { color: #6a9955; }
+        .code-box .number { color: #b5cea8; }
+        .two-col { display: flex; gap: 20px; }
+        .two-col > * { flex: 1; }
+
+        @media (max-height: 760px) {
+            .reveal { font-size: 16px; }
+            .figure img { max-height: 330px; }
+            .figure-lg img { max-height: 380px; }
+            .data-table { font-size: 0.62em; }
+        }
+    </style>
+</head>
+<body>
+    <div class="reveal">
+        <div class="slides">
+            <!-- SLIDE 1: TITLE -->
+            <section>
+                <div class="title-slide">
+                    <h1>High-Fidelity Mesh Smoothing<br>for Medical Brain MRI Data</h1>
+                    <p class="subtitle">Volume-Preserving Surface Reconstruction for Medical Imaging</p>
+                    <div style="width: 120px; height: 3px; background: var(--gold); margin: 15px auto;"></div>
+                    <p style="font-size: 1.1em;"><strong>Shubham Vikas Mhaske</strong></p>
+                    <p style="font-size: 0.85em; color: #555;">Department of Computer Science and Engineering</p>
+                    <p style="font-size: 0.85em; color: #555;">Texas A&M University</p>
+                    <div style="margin-top: 25px; padding: 15px 30px; background: rgba(80,0,0,0.05); border-radius: 8px;">
+                        <p style="font-size: 0.8em; color: var(--maroon); margin: 0;"><strong>CSCE 645: Geometric Modeling</strong> - Fall 2025</p>
+                        <p style="font-size: 0.75em; color: #666; margin: 5px 0 0 0;">Instructor: Professor John Keyser</p>
+                    </div>
+                    <p style="font-size: 0.75em; color: #888; margin-top: 15px;">December 2025</p>
+                    <p style="font-size: 0.6em; color: #999; margin-top: 6px;">Viewing: any modern browser (no plugins). Internet recommended for math rendering.</p>
+                </div>
+                <div class="slide-footer"><span>High-Fidelity Mesh Smoothing for Medical Brain MRI</span><span>Slide 1/16</span></div>
+            </section>
+
+            <!-- SLIDE 2: PROBLEM STATEMENT -->
+            <section>
+                <h2>Problem Statement: Medical Mesh Processing Challenge</h2>
+                <div class="grid-2">
+                    <div>
+                        <h3>Medical Imaging Pipeline</h3>
+                        <ol>
+                            <li><strong>MRI Scan:</strong> 3D volumetric data (1mm³ voxels)</li>
+                            <li><strong>AI Segmentation:</strong> Identify tumor regions (BraTS labels)</li>
+                            <li><strong>Surface Extraction:</strong> Marching Cubes algorithm</li>
+                            <li><strong>Mesh Smoothing:</strong> Remove staircase artifacts</li>
+                            <li><strong>Application:</strong> Surgical planning, volumetrics</li>
+                        </ol>
+                        <div class="card danger mt-1">
+                            <h4>The Critical Problem</h4>
+                            <p><strong>Marching Cubes produces:</strong></p>
+                            <ul style="font-size: 0.9em; margin-top: 3px;">
+                                <li>Jagged staircase artifacts at voxel boundaries</li>
+                                <li>Poor triangle quality (elongated, degenerate triangles)</li>
+                                <li>Artificial high-curvature regions at voxel corners</li>
+                                <li>Visual noise obscuring fine anatomical details</li>
+                            </ul>
+                        </div>
+                        <div class="card warning mt-1">
+                            <h4>Why Traditional Smoothing Fails</h4>
+                            <p>Laplacian smoothing causes <strong>1-4% volume shrinkage</strong> - unacceptable for tumor monitoring where FDA requires &lt;1% error!</p>
+                        </div>
+
+                        <div class="callout mt-1" style="padding: 10px 12px;">
+                            <p style="font-size: 0.78em;"><strong>Project Goal:</strong> Achieve <strong>&lt;0.1% volume change</strong> while maintaining high visual quality - 10× better than the FDA requirement</p>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="figure">
+                            <img src="outputs/figures/final_report/fig6_pipeline.png" alt="Pipeline" style="max-height: 250px;">
+                            <div class="figure-caption">Fig 1: Medical Imaging to Mesh Pipeline</div>
+                        </div>
+                        <div class="card info mt-1">
+                            <h4>Medical Imaging Requirements (RECIST 1.1)</h4>
+                            <ul style="font-size: 0.85em; margin-top: 3px;">
+                                <li>Volume accuracy: <strong>&lt;1% error</strong></li>
+                                <li>Preserve anatomical boundaries</li>
+                                <li>Interactive workflows (sub-second feedback)</li>
+                            </ul>
+                        </div>
+                        <div class="card" style="background: #f8f9fa; border-left: 4px solid var(--info); margin-top: 12px;">
+                            <h4>How the Software Processes Our Data (Per Sample)</h4>
+                            <ol style="font-size: 0.78em; margin: 6px 0 0 18px;">
+                                <li><strong>Input:</strong> 3D segmentation mask (BraTS labels in a NIfTI volume)</li>
+                                <li><strong>Marching Cubes:</strong> extract a surface mesh (vertices + faces)</li>
+                                <li><strong>Weights:</strong> build adjacency / cotangent weights (algorithm-dependent)</li>
+                                <li><strong>Iterate:</strong> update vertex positions for $k$ steps (faces fixed)</li>
+                                <li><strong>Evaluate &amp; Export:</strong> compute metrics (before/after), visualize in Streamlit, optionally export STL/figures</li>
+                            </ol>
+                        </div>
+                    </div>
+                </div>
+                <div class="slide-footer"><span>High-Fidelity Mesh Smoothing for Medical Brain MRI</span><span>Slide 2/16</span></div>
+            </section>
+
+            <!-- SLIDE 3: DATASET & SAMPLES -->
+            <section>
+                <h2>Dataset: BraTS 2023 Brain Tumor Segmentation</h2>
+                <div class="grid-2">
+                    <div>
+                        <h3>About BraTS Challenge</h3>
+                        <p>Multi-institutional MRI scans with expert annotations of glioma sub-regions. In our pipeline, each case provides a <strong>3D label volume</strong> that we convert into a <strong>surface mesh</strong> using Marching Cubes:</p>
+                        <ul>
+                            <li><strong>Label 1:</strong> Necrotic tumor core (NCR)</li>
+                            <li><strong>Label 2:</strong> Peritumoral edema (ED)</li>
+                            <li><strong>Label 3:</strong> Enhancing tumor (ET)</li>
+                        </ul>
+                        <h3 class="mt-1">Our Validation Set (20 Samples)</h3>
+                        <table class="data-table">
+                            <tr><th>Sample ID</th><th>Vertices</th><th>Faces</th></tr>
+                            <tr><td>BraTS-GLI-00001-000</td><td>118,970</td><td>237,936</td></tr>
+                            <tr><td>BraTS-GLI-00015-000</td><td>118,970</td><td>237,936</td></tr>
+                            <tr><td>BraTS2021_00002</td><td>38,322</td><td>76,644</td></tr>
+                            <tr><td>BraTS2021_00009</td><td>12,688</td><td>25,384</td></tr>
+                            <tr><td>BraTS2021_00008</td><td>5,990</td><td>11,976</td></tr>
+                        </table>
+                    </div>
+                    <div>
+                        <h3>Sample Statistics</h3>
+                        <div class="grid-3" style="gap: 8px;">
+                            <div class="metric-box"><div class="metric-value">20</div><div class="metric-label">Samples</div></div>
+                            <div class="metric-box"><div class="metric-value">35.5K</div><div class="metric-label">Avg Vertices</div></div>
+                            <div class="metric-box"><div class="metric-value">71K</div><div class="metric-label">Avg Faces</div></div>
+                        </div>
+                        <h3 class="mt-1">Mesh Complexity Distribution</h3>
+                        <div class="grid-5" style="gap: 6px; margin-top: 8px;">
+                            <div class="sample-card"><div class="name">Smallest</div><div class="stat">5.9K verts</div></div>
+                            <div class="sample-card"><div class="name">Small</div><div class="stat">12-15K verts</div></div>
+                            <div class="sample-card"><div class="name">Medium</div><div class="stat">20-30K verts</div></div>
+                            <div class="sample-card"><div class="name">Large</div><div class="stat">36-38K verts</div></div>
+                            <div class="sample-card"><div class="name">Largest</div><div class="stat">118K verts</div></div>
+                        </div>
+                        <div class="card success mt-1">
+                            <h4>Dataset Diversity</h4>
+                            <p>Vertex range: <strong>5,990 - 118,970</strong> (20× variation)<br>
+                            Face count: <strong>11,976 - 237,936</strong> triangles per mesh<br>
+                            5 BraTS-GLI + 15 BraTS2021 samples</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="slide-footer"><span>High-Fidelity Mesh Smoothing for Medical Brain MRI</span><span>Slide 3/16</span></div>
+            </section>
+
+            <!-- SLIDE 4: RESEARCH OBJECTIVES & METRICS -->
+            <section>
+                <h2>Research Objectives & Evaluation Metrics</h2>
+                <div class="grid-2">
+                    <div>
+                        <h3>Project Objectives</h3>
+                        <div class="card info">
+                            <h4>1. Algorithm Development</h4>
+                            <p>Implement 5 smoothing algorithms: Laplacian, Taubin λ|μ, + <strong>3 novel methods (this work):</strong> Geodesic Heat, Info-Theoretic, Anisotropic</p>
+                        </div>
+                        <div class="card info mt-1">
+                            <h4>2. Comprehensive Evaluation</h4>
+                            <p>Test on 20 medical meshes across 4 core metrics (volume, smoothness, aspect ratio, time)</p>
+                        </div>
+                        <div class="card info mt-1">
+                            <h4>3. Quantitative Analysis</h4>
+                            <p>Measure volume preservation, smoothing quality, mesh quality, and processing time</p>
+                        </div>
+                        <div class="card info mt-1">
+                            <h4>4. Application Guidelines</h4>
+                            <p>Create decision framework for algorithm selection based on use case</p>
+                        </div>
+                    </div>
+                    <div>
+                        <h3>Quality Metrics Used</h3>
+                        <table class="data-table">
+                            <tr><th>Metric</th><th>Description</th><th>Target</th></tr>
+                            <tr><td><strong>Volume Δ (%)</strong></td><td>Relative volume change</td><td class="best">&lt; 0.1%</td></tr>
+                            <tr><td><strong>AR Improve (%)</strong></td><td>Triangle aspect ratio gain</td><td>Maximize</td></tr>
+                            <tr><td><strong>Smoothness (%)</strong></td><td>Curvature variance reduction</td><td>&gt; 50%</td></tr>
+                            <tr><td><strong>Time (ms)</strong></td><td>Processing latency</td><td>&lt; 100ms</td></tr>
+                        </table>
+                        <h3 class="mt-1">Validation Summary</h3>
+                        <div class="grid-4" style="gap: 8px;">
+                            <div class="metric-box"><div class="metric-value">20</div><div class="metric-label">Mesh Samples</div></div>
+                            <div class="metric-box"><div class="metric-value">5</div><div class="metric-label">Algorithms</div></div>
+                            <div class="metric-box"><div class="metric-value">4</div><div class="metric-label">Metrics</div></div>
+                            <div class="metric-box"><div class="metric-value">400</div><div class="metric-label">Measurements</div></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="slide-footer"><span>High-Fidelity Mesh Smoothing for Medical Brain MRI</span><span>Slide 4/16</span></div>
+            </section>
+
+            <!-- SLIDE 5: BASELINE - LAPLACIAN -->
+            <section>
+                <h2>Baseline: Laplacian Smoothing</h2>
+                <div class="grid-2">
+                    <div>
+                        <h3>Mathematical Formulation</h3>
+                        <div class="math-box">
+                            <div class="math-label">Laplacian Operator</div>
+                            $$ L(\mathbf{v}_i) = \frac{1}{|N(i)|} \sum_{j \in N(i)} \mathbf{v}_j - \mathbf{v}_i $$
+                        </div>
+                        <div class="math-box">
+                            <div class="math-label">Update Rule</div>
+                            $$ \mathbf{v}_i' = \mathbf{v}_i + \lambda \cdot L(\mathbf{v}_i), \quad \lambda = 0.5 $$
+                        </div>
+                        <div class="algorithm mt-1">
+                            <div class="algorithm-title">Algorithm 1: Laplacian Smoothing</div>
+                            <div class="algorithm-line"><span class="num">1:</span> <span class="keyword">Input:</span> Mesh M, λ=0.5, iterations k</div>
+                            <div class="algorithm-line"><span class="num">2:</span> W ← BuildAdjacency(M) <span class="comment">// Row-normalized</span></div>
+                            <div class="algorithm-line"><span class="num">3:</span> K ← (1-λ)I + λW</div>
+                            <div class="algorithm-line"><span class="num">4:</span> <span class="keyword">for</span> i = 1 to k <span class="keyword">do</span></div>
+                            <div class="algorithm-line"><span class="num">5:</span> &nbsp;&nbsp;V ← K · V</div>
+                            <div class="algorithm-line"><span class="num">6:</span> <span class="keyword">return</span> V</div>
+                        </div>
+                    </div>
+                    <div>
+                        <h3>Experimental Results (n=20)</h3>
+                        <div class="grid-2" style="gap: 8px;">
+                            <div class="metric-box" style="background: #ffebee;"><div class="metric-value text-danger">-0.92%</div><div class="metric-label">Volume Change</div><div class="metric-detail">±0.79% std</div></div>
+                            <div class="metric-box" style="background: #e8f5e9;"><div class="metric-value text-success">97.4%</div><div class="metric-label">Smoothness</div><div class="metric-detail">Best smoothing</div></div>
+                        </div>
+                        <table class="data-table mt-1">
+                            <tr><th>Sample</th><th>Vol Δ</th><th>Smooth</th><th>AR Δ</th><th>Time</th></tr>
+                            <tr><td>BraTS-GLI-00001</td><td class="worst">-0.14%</td><td>98.6%</td><td>+58%</td><td>43ms</td></tr>
+                            <tr><td>BraTS2021_00002</td><td class="worst">-0.33%</td><td>96.7%</td><td>+58%</td><td>14ms</td></tr>
+                            <tr><td>BraTS2021_00009</td><td class="worst">-3.21%</td><td>96.7%</td><td>+58%</td><td>5ms</td></tr>
+                            <tr><td>BraTS2021_00008</td><td class="worst">-2.43%</td><td>97.3%</td><td>+58%</td><td>3ms</td></tr>
+                        </table>
+                        <div class="card danger mt-1">
+                            <h4>Critical Failure for Medical Use</h4>
+                            <p>Volume loss ranges from <strong>-0.14% to -3.21%</strong> depending on mesh size. Smaller meshes suffer more shrinkage. Not suitable for volume-sensitive applications.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="slide-footer"><span>High-Fidelity Mesh Smoothing for Medical Brain MRI</span><span>Slide 5/16</span></div>
+            </section>
+
+            <!-- SLIDE 6: TAUBIN SMOOTHING -->
+            <section>
+                <h2>State-of-the-Art: Taubin λ|μ Smoothing</h2>
+                <div class="grid-2">
+                    <div>
+                        <h3>Signal Processing Perspective</h3>
+                        <p>Key insight: Laplacian acts as low-pass filter. Solution: alternate shrink/expand steps.</p>
+                        <div class="math-box">
+                            <div class="math-label">Two-Step Process</div>
+                            $$ \mathbf{v}' = \mathbf{v} + \lambda \cdot L(\mathbf{v}) \quad \text{(shrink)} $$
+                            $$ \mathbf{v}'' = \mathbf{v}' + \mu \cdot L(\mathbf{v}') \quad \text{(expand)} $$
+                        </div>
+                        <p class="small-text">Parameters: λ = 0.5, μ = -0.53 (0 &lt; λ &lt; -μ)</p>
+                        <div class="algorithm mt-1">
+                            <div class="algorithm-title">Algorithm 2: Taubin Smoothing</div>
+                            <div class="algorithm-line"><span class="num">1:</span> <span class="keyword">Input:</span> Mesh M, λ=0.5, μ=-0.53, k</div>
+                            <div class="algorithm-line"><span class="num">2:</span> K_λ ← (1-λ)I + λW</div>
+                            <div class="algorithm-line"><span class="num">3:</span> K_μ ← (1-μ)I + μW</div>
+                            <div class="algorithm-line"><span class="num">4:</span> <span class="keyword">for</span> i = 1 to k <span class="keyword">do</span></div>
+                            <div class="algorithm-line"><span class="num">5:</span> &nbsp;&nbsp;V ← K_λ · V <span class="comment">// Shrink</span></div>
+                            <div class="algorithm-line"><span class="num">6:</span> &nbsp;&nbsp;V ← K_μ · V <span class="comment">// Expand</span></div>
+                            <div class="algorithm-line"><span class="num">7:</span> <span class="keyword">return</span> V</div>
+                        </div>
+                    </div>
+                    <div>
+                        <h3>Experimental Results (n=20)</h3>
+                        <div class="grid-2" style="gap: 8px;">
+                            <div class="metric-box" style="background: #e8f5e9;"><div class="metric-value text-success">+0.056%</div><div class="metric-label">Volume Change</div><div class="metric-detail">Best preservation</div></div>
+                            <div class="metric-box"><div class="metric-value">89.0%</div><div class="metric-label">Smoothness</div><div class="metric-detail">Good quality</div></div>
+                        </div>
+                        <table class="data-table mt-1">
+                            <tr><th>Sample</th><th>Vol Δ</th><th>Smooth</th><th>AR Δ</th><th>Time</th></tr>
+                            <tr><td>BraTS-GLI-00001</td><td class="best">+0.009%</td><td>91.7%</td><td>+13.5%</td><td>63ms</td></tr>
+                            <tr><td>BraTS2021_00002</td><td class="best">+0.035%</td><td>86.2%</td><td>+13.5%</td><td>21ms</td></tr>
+                            <tr><td>BraTS2021_00009</td><td>+0.192%</td><td>87.1%</td><td>+13.5%</td><td>7ms</td></tr>
+                            <tr><td>BraTS2021_00008</td><td>+0.149%</td><td>88.2%</td><td>+13.5%</td><td>4ms</td></tr>
+                        </table>
+                        <div class="card success mt-1">
+                            <h4>Volume Preserved</h4>
+                            <p>Expansion step compensates for shrinkage. Mean <strong>+0.056%</strong> volume change - excellent preservation while achieving 89% smoothness.</p>
+                        </div>
+                        <div class="card warning mt-1">
+                            <h4>Trade-off Consideration</h4>
+                            <p>Slightly less smoothing than Laplacian (89% vs 97.4%) but critical volume preservation. Consistent across all mesh sizes.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="slide-footer"><span>High-Fidelity Mesh Smoothing for Medical Brain MRI</span><span>Slide 6/16</span></div>
+            </section>
+
+            <!-- SLIDE 7: GEODESIC HEAT (NOVEL METHOD - THIS WORK) -->
+            <section>
+                <h2>Novel Method 1 (This Work): Geodesic Heat Diffusion Smoothing</h2>
+                <div class="grid-2">
+                    <div>
+                        <h3>Key Concept</h3>
+                        <p>Use <strong>geodesic distances</strong> (along surface) instead of Euclidean for neighbor weighting.</p>
+                        <div class="math-box">
+                            <div class="math-label">Heat Kernel Weights</div>
+                            $$ K_t(x,y) = \exp\left(-\frac{d_{geo}(x,y)^2}{4t}\right) $$
+                        </div>
+                        <div class="math-box">
+                            <div class="math-label">Cotangent Laplacian</div>
+                            $$ H(\mathbf{v}_i) = \frac{1}{4A} \sum_{j \in N(i)} (\cot \alpha_{ij} + \cot \beta_{ij})(\mathbf{v}_i - \mathbf{v}_j) $$
+                        </div>
+                        <div class="algorithm mt-1">
+                            <div class="algorithm-title">Algorithm 3: Geodesic Heat Smoothing</div>
+                            <div class="algorithm-line"><span class="num">1:</span> <span class="keyword">Input:</span> Mesh M, time t, iterations k</div>
+                            <div class="algorithm-line"><span class="num">2:</span> L_cot ← BuildCotangentLaplacian(M)</div>
+                            <div class="algorithm-line"><span class="num">3:</span> <span class="keyword">for</span> each edge (i,j) <span class="keyword">do</span></div>
+                            <div class="algorithm-line"><span class="num">4:</span> &nbsp;&nbsp;d_geo[i,j] ← ApproxGeodesic(L_cot, i, j)</div>
+                            <div class="algorithm-line"><span class="num">5:</span> &nbsp;&nbsp;W[i,j] ← exp(-d_geo²/4t)</div>
+                            <div class="algorithm-line"><span class="num">6:</span> <span class="keyword">for</span> iter = 1 to k <span class="keyword">do</span></div>
+                            <div class="algorithm-line"><span class="num">7:</span> &nbsp;&nbsp;V ← Normalize(W) · V</div>
+                            <div class="algorithm-line"><span class="num">8:</span> <span class="keyword">return</span> V</div>
+                        </div>
+                    </div>
+                    <div>
+                        <h3>Experimental Results (n=20)</h3>
+                        <div class="grid-2" style="gap: 8px;">
+                            <div class="metric-box" style="background: #fff3e0;"><div class="metric-value text-warning">-0.82%</div><div class="metric-label">Volume Change</div><div class="metric-detail">Similar to Laplacian</div></div>
+                            <div class="metric-box" style="background: #e8f5e9;"><div class="metric-value text-success">97.0%</div><div class="metric-label">Smoothness</div><div class="metric-detail">Near-best quality</div></div>
+                        </div>
+                        <table class="data-table mt-1">
+                            <tr><th>Sample</th><th>Vol Δ</th><th>Smooth</th><th>AR Δ</th><th>Time</th></tr>
+                            <tr><td>BraTS-GLI-00001</td><td>-0.12%</td><td>98.4%</td><td>+53%</td><td>70ms</td></tr>
+                            <tr><td>BraTS2021_00002</td><td>-0.28%</td><td>96.0%</td><td>+53%</td><td>25ms</td></tr>
+                            <tr><td>BraTS2021_00009</td><td class="worst">-2.88%</td><td>96.1%</td><td>+53%</td><td>8ms</td></tr>
+                            <tr><td>BraTS2021_00008</td><td class="worst">-2.18%</td><td>96.8%</td><td>+53%</td><td>4ms</td></tr>
+                        </table>
+                        <div class="card info mt-1">
+                            <h4>Analysis</h4>
+                            <p>Near-Laplacian smoothing quality (97% vs 97.4%) with similar volume loss. Best aspect ratio improvement (+53%). Suitable for visualization where some volume loss is acceptable.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="slide-footer"><span>High-Fidelity Mesh Smoothing for Medical Brain MRI</span><span>Slide 7/16</span></div>
+            </section>
+
+            <!-- SLIDE 8: INFO-THEORETIC (NOVEL METHOD - THIS WORK) -->
+            <section>
+                <h2>Novel Method 2 (This Work): Information-Theoretic Smoothing</h2>
+                <div class="grid-2">
+                    <div>
+                        <h3>Key Idea</h3>
+                        <p>Use <strong>Shannon entropy</strong> of local curvature to separate noise (high entropy) from structured features (low entropy).</p>
+                        <div class="math-box" style="padding: 8px 10px;">
+                            <div class="math-label">Entropy-Based Weight</div>
+                            $$ H(v) = -\sum_{i=1}^{n} p(\kappa_i) \log p(\kappa_i) $$
+                            $$ w(v) = \sigma(H(v) - \tau) $$
+                        </div>
+                        <h4 class="mt-1">Intuition</h4>
+                        <ul class="small-text">
+                            <li><strong>High entropy:</strong> random curvature/noise → smooth more</li>
+                            <li><strong>Low entropy:</strong> coherent features → preserve</li>
+                            <li>Adaptive: different smoothing strength per vertex</li>
+                        </ul>
+                        <div class="algorithm mt-1" style="font-size: 0.65em;">
+                            <div class="algorithm-title">Algorithm 4: Info-Theoretic Smoothing</div>
+                            <div class="algorithm-line"><span class="num">1:</span> <span class="keyword">Input:</span> Mesh M, threshold τ, iterations k</div>
+                            <div class="algorithm-line"><span class="num">2:</span> κ ← EstimateCurvature(M)</div>
+                            <div class="algorithm-line"><span class="num">3:</span> <span class="keyword">for</span> vertex v <span class="keyword">do</span> H[v] ← Entropy(κ[N(v)])</div>
+                            <div class="algorithm-line"><span class="num">4:</span> <span class="keyword">for</span> vertex v <span class="keyword">do</span> w[v] ← sigmoid(H[v] - τ)</div>
+                            <div class="algorithm-line"><span class="num">5:</span> <span class="keyword">for</span> iter = 1..k <span class="keyword">do</span> V ← SmoothWeighted(V, w)</div>
+                            <div class="algorithm-line"><span class="num">6:</span> <span class="keyword">return</span> V</div>
+                        </div>
+                    </div>
+                    <div>
+                        <h3>Experimental Results (n=20)</h3>
+                        <div class="grid-2" style="gap: 8px;">
+                            <div class="metric-box" style="background: #e8f5e9;"><div class="metric-value text-success">+0.042%</div><div class="metric-label">Volume Change</div><div class="metric-detail">±0.035% std</div></div>
+                            <div class="metric-box" style="background: #e3f2fd;"><div class="metric-value text-info">84.4%</div><div class="metric-label">Smoothness</div><div class="metric-detail">±2.2% std</div></div>
+                        </div>
+                        <div class="grid-2 mt-1" style="gap: 8px;">
+                            <div class="metric-box"><div class="metric-value">+12.2%</div><div class="metric-label">AR Improve</div><div class="metric-detail">±0.3% std</div></div>
+                            <div class="metric-box"><div class="metric-value">44ms</div><div class="metric-label">Time</div><div class="metric-detail">mean (n=20)</div></div>
+                        </div>
+                        <div class="card success mt-1">
+                            <h4>Why It Matters</h4>
+                            <p>Among volume-safe methods, Info-Theoretic provides the strongest smoothing (84.4%) while keeping volume change near zero (+0.042%).</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="slide-footer"><span>High-Fidelity Mesh Smoothing for Medical Brain MRI</span><span>Slide 8/16</span></div>
+            </section>
+
+            <!-- SLIDE 9: ANISOTROPIC (NOVEL METHOD - THIS WORK) -->
+            <section>
+                <h2>Novel Method 3 (This Work): Anisotropic Tensor Smoothing</h2>
+                <div class="grid-2">
+                    <div>
+                        <h3>Key Idea</h3>
+                        <p>Build a <strong>directional diffusion tensor</strong> per vertex so smoothing happens preferentially along stable directions, not across sharp features.</p>
+                        <div class="math-box" style="padding: 8px 10px;">
+                            <div class="math-label">Diffusion Tensor</div>
+                            $$ D = \lambda_\parallel\, e_1 e_1^T + \lambda_\perp\, e_2 e_2^T $$
+                        </div>
+                        <h4 class="mt-1">Intuition</h4>
+                        <ul class="small-text">
+                            <li>Estimate principal curvature directions $(e_1, e_2)$</li>
+                            <li>Diffuse strongly in low-curvature direction; weakly across edges</li>
+                            <li>Feature preservation emerges from anisotropy (no explicit edge detection needed)</li>
+                        </ul>
+                        <div class="algorithm mt-1" style="font-size: 0.65em;">
+                            <div class="algorithm-title">Algorithm 5: Anisotropic Smoothing</div>
+                            <div class="algorithm-line"><span class="num">1:</span> <span class="keyword">Input:</span> Mesh M, iterations k</div>
+                            <div class="algorithm-line"><span class="num">2:</span> <span class="keyword">for</span> vertex v <span class="keyword">do</span> (κ₁,κ₂,e₁,e₂) ← PrincipalCurvature(v)</div>
+                            <div class="algorithm-line"><span class="num">3:</span> <span class="keyword">for</span> vertex v <span class="keyword">do</span> D[v] ← λ‖·e₁e₁ᵀ + λ⊥·e₂e₂ᵀ</div>
+                            <div class="algorithm-line"><span class="num">4:</span> <span class="keyword">for</span> iter = 1..k <span class="keyword">do</span> V ← V + D·(∇²V)</div>
+                            <div class="algorithm-line"><span class="num">5:</span> <span class="keyword">return</span> V</div>
+                        </div>
+                    </div>
+                    <div>
+                        <h3>Experimental Results (n=20)</h3>
+                        <div class="grid-2" style="gap: 8px;">
+                            <div class="metric-box" style="background: #e8f5e9;"><div class="metric-value text-success">-0.022%</div><div class="metric-label">Volume Change</div><div class="metric-detail">±0.019% std</div></div>
+                            <div class="metric-box" style="background: #fff3e0;"><div class="metric-value text-warning">59.5%</div><div class="metric-label">Smoothness</div><div class="metric-detail">feature-preserving</div></div>
+                        </div>
+                        <div class="grid-2 mt-1" style="gap: 8px;">
+                            <div class="metric-box"><div class="metric-value">+10.1%</div><div class="metric-label">AR Improve</div><div class="metric-detail">±0.2% std</div></div>
+                            <div class="metric-box"><div class="metric-value">126ms</div><div class="metric-label">Time</div><div class="metric-detail">mean (n=20)</div></div>
+                        </div>
+                        <div class="card info mt-1">
+                            <h4>Why It Matters</h4>
+                            <p>Best volume preservation across all tested methods (|ΔV| ≈ 0.02%). Use when measurement integrity dominates visual smoothing strength.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="slide-footer"><span>High-Fidelity Mesh Smoothing for Medical Brain MRI</span><span>Slide 9/16</span></div>
+            </section>
+
+            <!-- SLIDE 10: COMPREHENSIVE RESULTS TABLE -->
+            <section>
+                <h2>Comprehensive Results: All 5 Algorithms on 20 BraTS Samples</h2>
+                <table class="data-table" style="font-size: 0.7em;">
+                    <tr><th>Algorithm</th><th>Vol Mean</th><th>Vol Std</th><th>Smooth Mean</th><th>Smooth Std</th><th>AR Mean</th><th>Time</th><th>Suitable?</th></tr>
+                    <tr><td><strong>Laplacian</strong></td><td class="worst">-0.919%</td><td>±0.794%</td><td class="best">97.4%</td><td>±0.8%</td><td>+58.0%</td><td class="best">17ms</td><td class="worst">No</td></tr>
+                    <tr><td><strong>Taubin λ|μ</strong></td><td class="best">+0.056%</td><td class="best">±0.047%</td><td>89.0%</td><td>±1.9%</td><td>+13.5%</td><td>25ms</td><td class="best">Yes</td></tr>
+                    <tr style="background: #fffde7;"><td><strong>Geodesic Heat (This Work)</strong></td><td class="worst">-0.824%</td><td>±0.711%</td><td>97.0%</td><td>±0.9%</td><td class="best">+53.4%</td><td>27ms</td><td class="worst">No</td></tr>
+                    <tr style="background: #fffde7;"><td><strong>Anisotropic (This Work)</strong></td><td class="best">-0.022%</td><td class="best">±0.019%</td><td>59.5%</td><td>±1.8%</td><td>+10.1%</td><td>126ms</td><td class="best">Yes</td></tr>
+                    <tr class="highlight-row" style="background: #e8f5e9;"><td><strong>Info-Theoretic (This Work)</strong></td><td class="best">+0.042%</td><td class="best">±0.035%</td><td>84.4%</td><td>±2.2%</td><td>+12.2%</td><td>44ms</td><td class="best">Yes</td></tr>
+                </table>
+                <div class="grid-4 mt-1">
+                    <div class="card success">
+                        <h4>Best Volume</h4>
+                        <p><strong>Anisotropic:</strong> -0.022%<br><span class="tiny-text">±0.019% std (n=20)</span></p>
+                    </div>
+                    <div class="card info">
+                        <h4>Best Smoothing</h4>
+                        <p><strong>Laplacian:</strong> 97.4%<br><span class="tiny-text">But -0.92% vol loss</span></p>
+                    </div>
+                    <div class="card warning">
+                        <h4>Best Balance</h4>
+                        <p><strong>Taubin:</strong><br><span class="tiny-text">+0.056% vol, 89.0% smooth</span></p>
+                    </div>
+                    <div class="card info">
+                        <h4>Fastest</h4>
+                        <p><strong>Laplacian:</strong> 17ms<br><span class="tiny-text">Real-time capable</span></p>
+                    </div>
+                </div>
+                <h3 class="mt-1">Per-Sample Results (Selected Samples showing diversity)</h3>
+                <table class="data-table" style="font-size: 0.6em;">
+                    <tr><th>Sample</th><th>Vertices</th><th>Laplacian</th><th>Taubin</th><th>Geodesic (This Work)</th><th>Info-Theoretic (This Work)</th><th>Anisotropic (This Work)</th></tr>
+                    <tr><td>BraTS-GLI-00001-000</td><td>118,970</td><td class="worst">-0.136%</td><td class="best">+0.009%</td><td>-0.123%</td><td class="best">+0.007%</td><td class="best">-0.003%</td></tr>
+                    <tr><td>BraTS2021_00000</td><td>14,284</td><td class="worst">-1.324%</td><td class="best">+0.082%</td><td class="worst">-1.185%</td><td class="best">+0.060%</td><td>-0.032%</td></tr>
+                    <tr><td>BraTS2021_00009</td><td>12,688</td><td class="worst">-3.212%</td><td>+0.192%</td><td class="worst">-2.876%</td><td>+0.142%</td><td>-0.078%</td></tr>
+                    <tr><td>BraTS2021_00008</td><td>5,990</td><td class="worst">-2.433%</td><td>+0.149%</td><td class="worst">-2.184%</td><td>+0.108%</td><td>-0.059%</td></tr>
+                    <tr><td>BraTS2021_00012</td><td>36,880</td><td>-0.414%</td><td class="best">+0.028%</td><td>-0.375%</td><td class="best">+0.018%</td><td class="best">-0.009%</td></tr>
+                    <tr style="background: #f5f5f5; font-weight: 600;"><td>All 20 Samples</td><td>5K-119K</td><td class="worst">-0.92%±0.79</td><td class="best">+0.06%±0.05</td><td class="worst">-0.82%±0.71</td><td class="best">+0.04%±0.04</td><td class="best">-0.02%±0.02</td></tr>
+                </table>
+                <div class="slide-footer"><span>High-Fidelity Mesh Smoothing for Medical Brain MRI</span><span>Slide 10/16</span></div>
+            </section>
+
+            <!-- SLIDE 11: VISUAL RESULTS WITH MESH COMPARISONS -->
+            <section>
+                <h2>Visual Results: 3D Mesh Comparisons</h2>
+                <div class="grid-2">
+                    <div class="figure figure-lg">
+                        <img src="outputs/figures/mesh_comparisons/BraTS-GLI-00013-001_taubin_comparison_close.png" alt="Taubin Before/After">
+                        <div class="figure-caption">Original (red) vs Taubin Smoothed (green) - Vol: +0.009%</div>
+                    </div>
+                    <div class="figure figure-lg">
+                        <img src="outputs/figures/mesh_comparisons/BraTS-GLI-00015-000_all_algorithms_close.png" alt="All Algorithms">
+                        <div class="figure-caption">All 5 Algorithms Comparison (118K vertices)</div>
+                    </div>
+                </div>
+                <div class="grid-4 mt-1">
+                    <div class="card danger">
+                        <h4>Laplacian & Geodesic</h4>
+                        <p style="font-size: 0.7em;">Volume shrinkage (-0.92%, -0.82%). Mesh contracts toward centroid.</p>
+                    </div>
+                    <div class="card success">
+                        <h4>Taubin λ|μ</h4>
+                        <p style="font-size: 0.7em;">Best balance - smooth + preserved volume (+0.056%).</p>
+                    </div>
+                    <div class="card info">
+                        <h4>Info-Theoretic (This Work)</h4>
+                        <p style="font-size: 0.7em;">Good preservation (+0.042%) with 84.4% smoothing.</p>
+                    </div>
+                    <div class="card success">
+                        <h4>Anisotropic (This Work)</h4>
+                        <p style="font-size: 0.7em;">Best volume (-0.022%) but moderate smoothing.</p>
+                    </div>
+                </div>
+                <div class="callout mt-1">
+                    <p><strong>Recommendation:</strong> Use Taubin for general volume-sensitive applications. Our Anisotropic method achieves best volume preservation (-0.022%).</p>
+                </div>
+                <div class="slide-footer"><span>High-Fidelity Mesh Smoothing for Medical Brain MRI</span><span>Slide 11/16</span></div>
+            </section>
+
+            <!-- SLIDE 12: TRADEOFF & RADAR -->
+            <section>
+                <h2>Trade-off Analysis: Volume vs. Smoothing</h2>
+                <div class="grid-2">
+                    <div class="figure figure-lg">
+                        <img src="outputs/figures/presentation/fig4_tradeoff_scatter.png" alt="Scatter">
+                        <div class="figure-caption">Fig 3: Trade-off - Volume Change vs Smoothing</div>
+                    </div>
+                    <div class="figure figure-lg">
+                        <img src="outputs/figures/presentation/fig5_radar_comparison.png" alt="Radar">
+                        <div class="figure-caption">Fig 4: Multi-Metric Radar Comparison</div>
+                    </div>
+                </div>
+                <div class="grid-3 mt-1">
+                    <div class="card danger">
+                        <h4>Dominated: Laplacian</h4>
+                        <p>Highest smoothing (97.4%) but <strong>unacceptable volume loss</strong> (-0.92%).</p>
+                    </div>
+                    <div class="card success">
+                        <h4>Best Balance: Taubin</h4>
+                        <p>Excellent volume (+0.056%) with strong smoothing (89.0%) - <strong>recommended</strong>.</p>
+                    </div>
+                    <div class="card info">
+                        <h4>Best Volume: Anisotropic (This Work)</h4>
+                        <p>Minimal change (-0.022%) but lower smoothing (59.5%).</p>
+                    </div>
+                </div>
+                <div class="callout">
+                    <p><strong>Analysis:</strong> The ideal operating point is low |volume change| + high smoothing. <strong>Taubin</strong> and <strong>Info-Theoretic (This Work)</strong> achieve this balance consistently across all 20 samples.</p>
+                </div>
+                <div class="slide-footer"><span>High-Fidelity Mesh Smoothing for Medical Brain MRI</span><span>Slide 12/16</span></div>
+            </section>
+
+            <!-- SLIDE 13: SEMANTIC-AWARE SMOOTHING -->
+            <section>
+                <h2>Semantic-Aware Smoothing (Using BraTS Labels)</h2>
+                <div class="grid-2">
+                    <div>
+                        <h3>What We Change</h3>
+                        <p>Standard smoothers treat every edge equally. In medical meshes, this can <strong>blur boundaries</strong> between tumor sub-regions (e.g., core vs edema). We use BraTS segmentation labels to reduce smoothing <em>across</em> label boundaries.</p>
+                        <div class="math-box" style="padding: 10px 12px;">
+                            <div class="math-label">Label-Aware Edge Weighting</div>
+                            $$ w'_{ij} = w_{ij}\,\cdot\,\begin{cases}
+                            1 & \ell_i = \ell_j\\
+                            \alpha & \ell_i \neq \ell_j
+                            \end{cases},\quad \alpha = 0.3 $$
+                        </div>
+                        <h4 class="mt-1">Implementation Notes</h4>
+                        <ul class="small-text">
+                            <li>Map voxel labels → mesh vertices (nearest-neighbor lookup)</li>
+                            <li>Build adjacency once, then apply boundary scaling to weights</li>
+                            <li>Works as a <strong>drop-in modifier</strong> for Laplacian/Taubin-style smoothers</li>
+                        </ul>
+                    </div>
+                    <div>
+                        <h3>Why It Matters</h3>
+                        <div class="grid-2" style="gap: 8px;">
+                            <div class="metric-box" style="background: #e8f5e9;"><div class="metric-value text-success">84%</div><div class="metric-label">Boundary Preservation</div><div class="metric-detail">improvement</div></div>
+                            <div class="metric-box" style="background: #e3f2fd;"><div class="metric-value text-info">85%</div><div class="metric-label">Volume Drift</div><div class="metric-detail">reduction</div></div>
+                        </div>
+                        <div class="card info mt-1">
+                            <h4>Takeaway</h4>
+                            <p>Semantic-aware weighting preserves clinically meaningful transitions between BraTS sub-regions while still removing Marching Cubes “staircase” artifacts within each region.</p>
+                        </div>
+                        <div class="card warning mt-1">
+                            <h4>When to Use</h4>
+                            <p>Use this when you care about <strong>sub-region boundaries</strong> (e.g., enhancing tumor vs edema) and want to avoid cross-region smoothing artifacts.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="slide-footer"><span>High-Fidelity Mesh Smoothing for Medical Brain MRI</span><span>Slide 13/16</span></div>
+            </section>
+
+            <!-- SLIDE 14: APPLICATION GUIDELINES -->
+            <section>
+                <h2>Practical Application Guidelines</h2>
+                <div class="grid-3">
+                    <div class="card success">
+                        <h4>Volume-Critical Applications</h4>
+                        <p style="font-weight: 600; color: var(--success); font-size: 0.9em;">Recommendation: Taubin λ|μ</p>
+                        <ul style="font-size: 0.75em; margin-top: 5px;">
+                            <li>+0.056%±0.047% volume change</li>
+                            <li>89.0%±1.9% smoothing</li>
+                            <li>+13.5% aspect ratio improvement</li>
+                            <li>Processing: 25ms (avg)</li>
+                            <li>Verified on n=20 meshes</li>
+                        </ul>
+                        <p class="tiny-text" style="margin-top: 5px;"><strong>Use case:</strong> Medical volumetrics, treatment monitoring, longitudinal studies</p>
+                    </div>
+                    <div class="card info">
+                        <h4>Visual Quality Priority</h4>
+                        <p style="font-weight: 600; color: var(--info); font-size: 0.9em;">Recommendation: Geodesic Heat</p>
+                        <ul style="font-size: 0.75em; margin-top: 5px;">
+                            <li>97.0%±0.9% smoothness (excellent)</li>
+                            <li>+53.4% aspect ratio improvement</li>
+                            <li>Respects intrinsic surface geometry</li>
+                            <li>27ms average processing time</li>
+                            <li>Heat kernel preserves features</li>
+                        </ul>
+                        <p class="tiny-text" style="margin-top: 5px;"><strong>Use case:</strong> 3D printing, visualization, surgical planning</p>
+                    </div>
+                    <div class="card warning">
+                        <h4>Maximum Volume Preservation</h4>
+                        <p style="font-weight: 600; color: var(--warning); font-size: 0.9em;">Recommendation: Anisotropic</p>
+                        <ul style="font-size: 0.75em; margin-top: 5px;">
+                            <li>-0.022%±0.019% volume (best)</li>
+                            <li>59.5%±1.8% smoothing</li>
+                            <li>Feature-preserving diffusion</li>
+                            <li>126ms average processing</li>
+                            <li><strong>For precision measurements</strong></li>
+                        </ul>
+                        <p class="tiny-text" style="margin-top: 5px;"><strong>Use case:</strong> Precision volumetrics, tumor tracking</p>
+                    </div>
+                </div>
+                <h3 class="mt-1">Important Warnings</h3>
+                <div class="grid-2">
+                    <div class="card danger">
+                        <h4>Laplacian Volume Loss</h4>
+                        <p>Volume loss of <strong>-0.92%±0.79%</strong> per 10 iterations. Smaller meshes suffer more (up to -3.21%). This compounds with more iterations. Not suitable for volume-sensitive measurements.</p>
+                    </div>
+                    <div class="card danger">
+                        <h4>Geodesic Heat Volume Loss</h4>
+                        <p>Geodesic Heat has similar volume loss (<strong>-0.82%±0.71%</strong>) to Laplacian. Despite excellent smoothing (97.0%), it's not suitable for precision volumetrics due to shrinkage.</p>
+                    </div>
+                </div>
+                <div class="callout">
+                    <p><strong>Default Recommendation:</strong> Use <strong>Taubin λ|μ</strong> with λ=0.5, μ=-0.53, 10 iterations for applications requiring both volume accuracy (+0.056%±0.047%) and strong smoothing (89.0%). Verified on n=20 BraTS brain tumor meshes.</p>
+                </div>
+                <div class="slide-footer"><span>High-Fidelity Mesh Smoothing for Medical Brain MRI</span><span>Slide 14/16</span></div>
+            </section>
+
+            <!-- SLIDE 15: CONTRIBUTIONS & CONCLUSIONS -->
+            <section>
+                <h2>Contributions & Conclusions</h2>
+                <div class="grid-2">
+                    <div>
+                        <h3>My Contributions (Project Work)</h3>
+                        <ol>
+                            <li><strong>Algorithm Suite:</strong> Implemented 5 smoothing algorithms with vectorized NumPy/SciPy</li>
+                            <li><strong>3 Novel Methods:</strong> Implemented Geodesic Heat, Info-Theoretic, Anisotropic (geometric foundations)</li>
+                            <li><strong>Semantic Extension:</strong> Implemented label-aware smoothing to preserve BraTS sub-region boundaries</li>
+                            <li><strong>Comprehensive Evaluation:</strong> 20 BraTS meshes × 5 algorithms × 4 metrics = 400 measurements</li>
+                            <li><strong>Application Guidelines:</strong> Algorithm selection framework based on use case</li>
+                            <li><strong>Interactive Application:</strong> Streamlit web app with real-time 3D visualization</li>
+                        </ol>
+                        <h3 class="mt-1">Key Findings (n=20 samples)</h3>
+                        <ul>
+                            <li><strong>Taubin:</strong> Best balance (+0.056%±0.047% vol, 89.0% smooth)</li>
+                            <li><strong>Laplacian:</strong> Best smoothing (97.4%) but -0.92% vol loss</li>
+                            <li><strong>Geodesic Heat (This Work):</strong> Excellent smoothing (97.0%) but vol loss</li>
+                            <li><strong>Info-Theoretic (This Work):</strong> Good balance (+0.042%, 84.4%)</li>
+                            <li><strong>Anisotropic (This Work):</strong> Best vol preservation (-0.022%)</li>
+                        </ul>
+                    </div>
+                    <div>
+                        <h3>Summary of Results</h3>
+                        <div class="grid-2" style="gap: 8px;">
+                            <div class="metric-box" style="background: linear-gradient(135deg, var(--success), #43a047); color: white;">
+                                <div class="metric-value" style="color: white; font-size: 1.4em;">+0.056%</div>
+                                <div class="metric-label" style="color: rgba(255,255,255,0.9);">Taubin Vol Δ</div>
+                            </div>
+                            <div class="metric-box" style="background: linear-gradient(135deg, var(--info), #1976d2); color: white;">
+                                <div class="metric-value" style="color: white; font-size: 1.4em;">97.4%</div>
+                                <div class="metric-label" style="color: rgba(255,255,255,0.9);">Max Smoothing</div>
+                            </div>
+                            <div class="metric-box" style="background: linear-gradient(135deg, var(--warning), #fb8c00); color: white;">
+                                <div class="metric-value" style="color: white; font-size: 1.4em;">17ms</div>
+                                <div class="metric-label" style="color: rgba(255,255,255,0.9);">Fastest Time</div>
+                            </div>
+                            <div class="metric-box" style="background: linear-gradient(135deg, var(--maroon), #6a1b1b); color: white;">
+                                <div class="metric-value" style="color: white; font-size: 1.4em;">-0.022%</div>
+                                <div class="metric-label" style="color: rgba(255,255,255,0.9);">Best Vol (This Work)</div>
+                            </div>
+                        </div>
+                        <div class="figure mt-1">
+                            <img src="outputs/figures/presentation/fig6_summary_table.png" alt="Summary" style="max-height: 150px;">
+                            <div class="figure-caption">Fig 6: Complete Results Summary</div>
+                        </div>
+                        <h3 class="mt-1">Future Work</h3>
+                        <ul class="small-text">
+                            <li>GPU acceleration (CUDA) for 10-50× speedup</li>
+                            <li>Deep learning-based adaptive smoothing</li>
+                            <li>Extension to multi-modal imaging (CT, PET)</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="slide-footer"><span>High-Fidelity Mesh Smoothing for Medical Brain MRI</span><span>Slide 15/16</span></div>
+            </section>
+
+            <!-- SLIDE 16: Q&A -->
+            <section>
+                <div class="qa-slide">
+                    <h1>Thank You</h1>
+                    <div style="width: 120px; height: 3px; background: var(--gold); margin: 15px auto;"></div>
+                    <p style="font-size: 1.4em; margin-bottom: 30px;">Questions?</p>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 40px; max-width: 800px; margin-top: 20px;">
+                        <div>
+                            <p style="font-size: 0.65em; color: var(--gold); text-transform: uppercase; margin-bottom: 5px;">Author</p>
+                            <p style="font-size: 0.85em;">Shubham Vikas Mhaske</p>
+                            <p style="font-size: 0.7em; opacity: 0.8;">NetID: 334003509</p>
+                        </div>
+                        <div>
+                            <p style="font-size: 0.65em; color: var(--gold); text-transform: uppercase; margin-bottom: 5px;">Contact</p>
+                            <p style="font-size: 0.8em;">shubhammhaske@tamu.edu</p>
+                        </div>
+                        <div>
+                            <p style="font-size: 0.65em; color: var(--gold); text-transform: uppercase; margin-bottom: 5px;">Code Repository</p>
+                            <p style="font-size: 0.65em; font-family: 'JetBrains Mono', monospace;">github.com/shubham-mhaske/<br>geometric_modelling_project</p>
+                        </div>
+                    </div>
+                    <div style="margin-top: 40px; padding: 15px 30px; background: rgba(255,255,255,0.1); border-radius: 8px;">
+                        <p style="font-size: 0.75em; margin: 0; opacity: 0.9;"><strong>Key Takeaway:</strong> Use Taubin λ|μ smoothing for applications requiring volume accuracy (+0.056%±0.047% change, 89.0% smoothness) - verified on n=20 BraTS brain tumor meshes</p>
+                    </div>
+                    <div style="margin-top: 15px; font-size: 0.6em; opacity: 0.7;">
+                        <p>Interactive 3D visualizations available at: <code>outputs/figures/mesh_comparisons/</code></p>
+                    </div>
+                </div>
+                <div class="slide-footer light"><span>High-Fidelity Mesh Smoothing for Medical Brain MRI</span><span>Slide 16/16</span></div>
+            </section>
+        </div>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.5.0/reveal.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.5.0/plugin/math/math.min.js"></script>
+    <script>
+        Reveal.initialize({
+            hash: true,
+            center: false,
+            width: 1280,
+            height: 720,
+            margin: 0.04,
+            transition: 'slide',
+            slideNumber: true,
+            plugins: [RevealMath.KaTeX]
+        });
+    </script>
+</body>
+</html>

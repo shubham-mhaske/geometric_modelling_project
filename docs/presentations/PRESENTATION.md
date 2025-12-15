@@ -40,12 +40,12 @@
 
 **Key Statistics**:
 - BraTS MRI: 1mm³ resolution → staircase artifacts
-- Traditional methods: 5-22% volume loss unsuitable for clinical use
+- Naïve Laplacian smoothing: ≈0.9% mean volume shrinkage on our evaluation set (too large for volumetrics)
 
 **Speaking Points**:
 - "When we convert medical images to 3D meshes using Marching Cubes, we get these characteristic staircase artifacts from voxel discretization."
 - "For clinical applications like surgical planning, we need smooth surfaces, but we cannot afford to lose anatomical accuracy."
-- "Existing methods like Taubin smoothing can lose up to 22% volume on small CT meshes—completely unacceptable for tracking tumor growth."
+- "Naïve Laplacian smoothing can lose close to 1% volume on average—already too risky for clinical volumetrics—so we need volume-aware alternatives."
 
 ---
 
@@ -57,7 +57,7 @@
 **Goals**:
 1. Develop algorithms achieving <1% volume change (clinical threshold)
 2. Preserve high-curvature anatomical boundaries
-3. Validate across multiple imaging modalities
+3. Validate across a wide range of mesh complexities (5,990–118,970 vertices)
 4. Provide application-specific recommendations
 
 **Evaluation Criteria**:
@@ -113,115 +113,61 @@ Direction-dependent: parallel vs perpendicular to edges
 
 **Content**:
 
-**Comprehensive Dual-Modality Evaluation**:
-- **16 samples total** (10 MRI + 6 CT)
-- **MRI Brain Tumors**: 10 samples from BraTS dataset
-  - Range: 14,673 to 67,459 vertices
-  - Mean: 38,650 vertices
-  - Complex infiltrating tumors
-- **CT Hemorrhages**: 6 samples 
-  - Range: 560 to 45,107 vertices
-  - Mean: 13,365 vertices
-  - Small acute hemorrhages
+**Evaluation Dataset (BraTS 2023, n=20)**:
+- **20 MRI brain tumor meshes** extracted from BraTS segmentations
+- **Vertex range**: 5,990 to 118,970 (≈20× complexity variation)
+- **Why this matters**: tests robustness across tumor size and mesh density without mixing different acquisition modalities
 
-**Why Dual-Modality?**
-- Tests algorithm robustness across modalities
-- Validates mesh-size dependency (MRI 2.9× larger)
-- Clinical workflows use both CT and MRI
+**Measurements (per mesh × algorithm)**:
+- Volume change (Δ%)
+- Smoothness (curvature-variance reduction %)
+- Mesh quality (aspect ratio improvement %)
+- Processing time (ms)
+
+**Total measurements**:
+- 20 meshes × 5 algorithms × 4 primary metrics = **400 measurements**
 
 **Speaking Points**:
-- "I conducted a comprehensive evaluation across 16 samples from two imaging modalities."
-- "MRI brain tumors provide large, complex meshes averaging 39,000 vertices, while CT hemorrhages test algorithm stability on small meshes."
-- "This 2.9× size difference is critical for understanding algorithm behavior across clinical scenarios."
+- "I evaluated five algorithms on 20 BraTS 2023 tumor meshes spanning 5.9K to 119K vertices."
+- "This 20× range stress-tests both numerical stability and performance scaling."
 
 ---
 
-### Slide 6: Results - MRI Brain Tumors (1.5 minutes)
+### Slide 6: Results Summary (n=20 BraTS) (2 minutes)
 
-**Visual**: Table with color-coded performance metrics
+**Visual**: One table + one trade-off plot (volume Δ vs smoothness)
 
-**Content**:
+**Content (means over n=20)**:
 
-| Algorithm | Smoothness | Volume Pres. | Quality | Displacement | Time |
-|-----------|------------|--------------|---------|--------------|------|
-| **Taubin** | +86.8% | 98.5% | 0.825 | 0.518mm | 41ms |
-| **Laplacian** | +70.0% | 99.8% | 0.732 | 0.248mm | 22ms |
-| **Geodesic Heat** | **+68.9%** | **99.3%** | **0.803** | **0.387mm** | 9,678ms |
-| **Info-Theoretic** | +34.2% | **100.0%** ✨ | 0.636 | **0.107mm** | 15,976ms |
-| **Anisotropic** | +16.6% | **99.9%** | 0.654 | **0.070mm** ✨ | 35,434ms |
-
-**Key Findings**:
-- ✅ **Geodesic Heat matches Laplacian smoothing** (68.9% vs 70.0%)
-- ✅ **Info-Theoretic achieves perfect volume preservation** (100.0%)
-- ✅ **Novel algorithms use 75% less displacement** than baselines
-- ⚡ Baselines 240-440× faster (real-time vs batch processing)
+| Algorithm | Volume Δ | Smoothness | Time |
+|-----------|----------|------------|------|
+| **Taubin λ-μ** | **+0.056% ± 0.047%** | 89.0% | 25ms |
+| Laplacian | −0.92% | **97.4%** | **17ms** |
+| Geodesic Heat | −0.82% | 97.0% | 27ms |
+| Info-Theoretic | +0.042% | 84.4% | 44ms |
+| Anisotropic Tensor | −0.022% | 59.5% | 126ms |
 
 **Speaking Points**:
-- "On MRI brain tumors, Geodesic Heat achieves 68.9% smoothing—nearly matching the Laplacian baseline—while preserving 99.3% volume."
-- "Information-Theoretic is remarkable: perfect 100% volume preservation across all 10 MRI samples with minimal 0.1mm displacement."
-- "The trade-off is processing time: novel algorithms require 10-35 seconds versus 20-40 milliseconds for baselines."
+- "Taubin gives the best *clinical* trade-off: near-zero volume drift with strong smoothing at real-time speed."
+- "Laplacian is visually strongest and fastest, but the ~1% shrinkage makes it unsafe for final volumetrics."
 
 ---
 
-### Slide 7: Results - CT Hemorrhages (CRITICAL FINDING) (1.5 minutes)
+### Slide 7: Semantic-Aware Smoothing (1 minute)
 
-**Visual**: Table with WARNING highlight on Taubin performance
+**Visual**: Before/after boundary drift or label boundary overlay
 
-**Content**:
-
-| Algorithm | Smoothness | Volume Pres. | Quality | Displacement | Time |
-|-----------|------------|--------------|---------|--------------|------|
-| **Taubin** | +72.1% | ⚠️ **77.7%** | 0.592 | 1.076mm | 13ms |
-| **Laplacian** | +45.6% | 94.3% | 0.565 | 0.381mm | 7ms |
-| **Geodesic Heat** | +5.3% | 88.1% | 0.596 | 0.501mm | 3,333ms |
-| **Info-Theoretic** | +19.7% | **99.8%** ✅ | 0.469 | 0.142mm | 5,473ms |
-| **Anisotropic** | +5.5% | **98.0%** | 0.443 | 0.068mm | 12,085ms |
-
-**🚨 CRITICAL DISCOVERY: Taubin Mesh-Size Dependency**
-- Taubin: 98.5% volume on MRI → 77.7% on CT = **22.3% volume loss**
-- **20.8% performance difference** between modalities
-- Unsuitable for clinical workflows requiring consistent measurements
-
-**Novel Algorithms Remain Consistent**:
-- Info-Theoretic: 100.0% MRI → 99.8% CT (only 0.2% difference)
-- Robust performance independent of mesh size
+**Key Result (Laplacian + semantic weights)**:
+- Volume drift: −0.96% → **−0.14%** (85% reduction)
+- Boundary drift (mm³): 3,346 → **534** (84% reduction)
+- Edge preservation: 62% → **94%** (+32 points)
 
 **Speaking Points**:
-- "Here's where we discover a critical limitation of existing methods."
-- "Taubin, which performed well on MRI with 98.5% volume preservation, FAILS on small CT meshes with 22.3% volume loss."
-- "This mesh-size dependency makes it unsuitable for clinical applications that require consistent measurements across different imaging modalities."
-- "In contrast, our novel algorithms maintain consistency: Info-Theoretic shows only 0.2% difference between MRI and CT."
+- "Using labels, we reduce cross-boundary smoothing, preserving clinically meaningful boundaries without sacrificing interior smoothing."
 
 ---
 
-### Slide 8: Cross-Dataset Analysis (1 minute)
-
-**Visual**: Bar chart comparing volume preservation across datasets
-
-**Content**:
-
-**Mesh Size Dependency Validated Across 16 Samples**:
-
-| Metric | CT (13K verts) | MRI (39K verts) | Ratio |
-|--------|----------------|------------------|-------|
-| **Average Size** | 13,365 | 38,650 | 2.9× |
-| **Taubin Vol** | 77.7% | 98.5% | 20.8% diff |
-| **Novel Vol** | 98.6% | 99.7% | 1.1% diff |
-
-**Why This Matters Clinically**:
-- Longitudinal monitoring requires consistent measurements
-- Multi-modal workflows (CT → MRI → CT) cannot tolerate algorithm-dependent bias
-- RECIST criteria: <5% variation required (Info-Theoretic: 0.1% error = 50× margin)
-
-**Speaking Points**:
-- "This analysis across 16 samples reveals clear patterns."
-- "Taubin's 20.8% volume difference between modalities is clinically unacceptable."
-- "Novel algorithms maintain 99% volume preservation across all mesh sizes and modalities."
-- "For comparison, clinical tumor monitoring guidelines allow only 5% variation—our algorithms exceed this by 50 times."
-
----
-
-### Slide 9: Algorithm Selection Guidelines (1 minute)
+### Slide 8: Algorithm Selection Guidelines & Conclusion (1.5 minutes)
 
 **Visual**: Decision tree or flowchart
 
@@ -230,28 +176,25 @@ Direction-dependent: parallel vs perpendicular to edges
 **Application-Specific Recommendations**:
 
 **🏥 Clinical Volumetric Analysis**
-→ **Info-Theoretic**
-- 99.9% volume preservation
-- Minimal 0.1mm displacement
-- Use case: Tumor monitoring, radiation therapy planning
+→ **Taubin λ-μ**
+- +0.056% ± 0.047% volume change (validated on n=20)
+- Real-time (25ms mean)
+- Use case: RECIST-style monitoring, longitudinal volume tracking
 
 **🎮 Interactive Real-Time Visualization**
 → **Laplacian**
-- 67 FPS performance (22ms)
-- 99.8% volume preservation
-- Use case: Surgical planning tools, interactive viewers
+- Fastest (17ms mean)
+- Warning: not for final volumetrics (−0.92% mean shrinkage)
 
 **📊 Publication-Quality Rendering**
 → **Geodesic Heat**
-- 68.9% smoothing (matches Laplacian)
-- Superior mesh quality (0.803)
-- Use case: Research papers, presentations
+ - Near-best smoothness (97.0%) with good visual quality
+ - Use case: figures, visualization, 3D printing where small volume drift is acceptable
 
 **🔬 Boundary Preservation**
-→ **Anisotropic Tensor**
-- 0.070mm displacement (most conservative)
-- 99.9% volume preservation
-- Use case: Vascular structures, thin membranes
+→ **Semantic-aware smoothing (when labels available)**
+- 84–85% boundary/volume drift reduction on Laplacian baseline
+- Use case: tumor sub-region boundaries, multi-label segmentations
 
 **Speaking Points**:
 - "Based on our comprehensive evaluation, I can provide clear application-specific recommendations."
@@ -263,36 +206,23 @@ Direction-dependent: parallel vs perpendicular to edges
 
 ### Slide 10: Implementation & Technical Contributions (1 minute)
 
-**Visual**: Code architecture diagram + performance chart
+**Visual**: Architecture diagram + timing bar chart
 
 **Content**:
 
 **Technical Achievements**:
-- ✅ **Vectorized NumPy/SciPy** implementation
-  - Sparse CSR matrices for O(|E|) memory vs O(n²)
-  - Cotangent Laplacian computation: 80ms for 118K vertices
-- ✅ **Interactive Streamlit Web App**
-  - Real-time parameter adjustment
-  - Plotly 3D visualization with lighting
-  - Dual-modality support (MRI + CT)
-- ✅ **Comprehensive Evaluation Pipeline**
-  - 5 metrics × 5 algorithms × 16 samples = 400 measurements
-  - Automated batch processing with CSV export
-
-**Processing Performance**:
-- Baselines: 7-41ms (real-time interactive)
-- Novel algorithms: 3-35s (batch processing)
-- GPU acceleration potential: 10-50× speedup → near real-time
-
-**Code Quality**:
-- Type hints, docstrings, unit tests
-- Modular architecture for extensibility
-- Production-ready vectorized operations
+- ✅ **Efficient NumPy/SciPy sparse implementation**
+  - CSR sparse matrices for scalable neighborhood operations
+  - Cotangent-Laplacian-based curvature estimates for geometry-aware methods
+- ✅ **Interactive Streamlit demo app**
+  - Compare algorithms on the same mesh
+  - Adjust parameters (e.g., Taubin λ/μ) and view quantitative metrics
+- ✅ **Reproducible evaluation pipeline**
+  - 20 meshes × 5 algorithms × 4 primary metrics = **400 measurements**
 
 **Speaking Points**:
-- "I implemented all algorithms using vectorized NumPy operations for production-grade performance."
-- "The interactive Streamlit application allows clinicians to visualize and adjust parameters in real-time."
-- "All code is well-documented, type-hinted, and tested, making it ready for clinical deployment."
+- "The emphasis was on reproducible, efficient implementations suitable for clinical-scale meshes."
+- "The Streamlit demo makes it easy to compare algorithms and understand the trade-offs." 
 
 ---
 
@@ -301,19 +231,14 @@ Direction-dependent: parallel vs perpendicular to edges
 **Visual**: Screen recording or live demo
 
 **Content**:
-- Launch Streamlit app: `streamlit run app.py`
-- Show MRI brain tumor mesh (BraTS-GLI-00001-000)
-- Apply algorithms side-by-side comparison
-- Highlight volume preservation metrics
-- Show CT hemorrhage (049.nii) with Taubin failure
-- Switch to Info-Theoretic showing perfect preservation
+- Open the demo app (Streamlit)
+- Load a representative BraTS mesh (e.g., BraTS-GLI-00001-000)
+- Compare Laplacian vs Taubin vs Geodesic Heat
+- Toggle semantic-aware smoothing (if enabled) to show boundary preservation impact
 
 **Speaking Points**:
-- "Let me show you a quick demonstration of the interactive application."
-- [Show MRI] "Here's a brain tumor mesh with 52,000 vertices showing typical Marching Cubes artifacts."
-- [Apply algorithms] "Watch how different algorithms handle the same mesh..."
-- [Show metrics] "Notice Info-Theoretic maintains exactly 100% volume while Taubin shows measurable shrinkage."
-- [Switch to CT] "Now on this small CT hemorrhage, you can see Taubin's volume loss clearly in the metrics."
+- "This quick demo shows the same mesh under different smoothers and the measured volume drift." 
+- "Notice that Taubin preserves size far better than Laplacian while still producing a smooth surface." 
 
 ---
 
@@ -323,30 +248,27 @@ Direction-dependent: parallel vs perpendicular to edges
 
 **Content**:
 
-**Novel Contributions**:
-1. ✅ **Three theoretically-grounded algorithms** (Geodesic Heat, Info-Theoretic, Anisotropic)
-2. ✅ **First comprehensive dual-modality evaluation** (MRI + CT, 16 samples)
-3. ✅ **Discovery of Taubin mesh-size dependency** (22.3% volume loss on small meshes)
-4. ✅ **Application-specific guidelines** for clinical use
-5. ✅ **Production-ready implementation** with interactive visualization
+**Contributions**:
+1. ✅ Implemented and compared **5 smoothing algorithms** (2 classical + 3 feature-aware)
+2. ✅ **Comprehensive BraTS evaluation (n=20)** spanning 20× mesh complexity (5,990–118,970 vertices)
+3. ✅ **Semantic-aware smoothing** showing large boundary-preservation gains when labels are available
+4. ✅ Clear **application guidelines** for volumetrics vs visualization vs preview
 
-**Clinical Impact**:
-- Enables accurate longitudinal tumor monitoring
-- Supports multi-modal workflows (CT ↔ MRI)
-- Exceeds RECIST guidelines by 50× margin
-- Provides clinicians with algorithm selection criteria
+**Clinical/Practical Impact**:
+- Reduces Marching Cubes artifacts while keeping volume drift below clinically-relevant thresholds
+- Provides a validated default (Taubin λ=0.5, μ=−0.53, 10 iters) for tumor volumetrics
+- Offers semantic boundary protection when segmentation labels exist
 
 **Academic Impact**:
-- Validates feature preservation vs aggressive smoothing trade-off
-- Quantifies mesh-size dependency across modalities
-- Establishes comprehensive evaluation framework (5 metrics)
+- Quantifies the smoothing/accuracy trade-off across multiple families of smoothers
+- Provides a compact, reproducible evaluation framework (400 measurements)
 
 **Speaking Points**:
 - "This project makes several key contributions to medical mesh processing."
-- "First, I developed three novel algorithms with strong mathematical foundations."
-- "Second, I discovered and quantified a critical limitation in existing methods that hasn't been reported."
-- "Third, I provide practical guidelines that clinicians can use to select appropriate algorithms for their specific applications."
-- "The 16-sample evaluation establishes a comprehensive framework for future algorithm comparisons."
+- "First, I implemented and compared five smoothing algorithms spanning classical and feature-aware approaches."
+- "Second, I quantified the core trade-off between smoothing strength and volume drift on 20 BraTS meshes spanning a 20× complexity range."
+- "Third, I showed that semantic-aware smoothing can substantially improve boundary preservation when labels are available."
+- "Finally, I provide practical guidelines that help choose the right method for volumetrics vs visualization vs preview."
 
 ---
 
@@ -357,9 +279,8 @@ Direction-dependent: parallel vs perpendicular to edges
 **Content**:
 
 **Current Limitations**:
-- ⏱️ Novel algorithms require 3-35s (not interactive)
-- 🖥️ CPU-only implementation
-- 📊 Limited to two anatomical structures (tumor, hemorrhage)
+- 📌 Primary validation is on **brain tumor MRI meshes** (BraTS); broader anatomy/modality validation is future work
+- 🖥️ CPU-first implementation (GPU acceleration could improve throughput)
 
 **Future Directions**:
 1. **GPU Acceleration**: CUDA implementation → 10-50× speedup
@@ -384,30 +305,24 @@ Direction-dependent: parallel vs perpendicular to edges
 
 **Content**:
 
-**Major Findings**:
-✅ **Info-Theoretic achieves 99.9% volume preservation** (100.0% MRI, 99.8% CT)  
-✅ **Geodesic Heat matches baseline smoothing** (68.9% vs 70.0%) with better quality  
-⚠️ **Taubin unsuitable for small meshes** (22.3% volume loss validated on 6 CT samples)  
-🎯 **Application-specific recommendations** provide practical clinical guidance
+**Major Findings (n=20 BraTS)**:
+✅ **Taubin λ-μ** delivers the best default for volumetrics: **+0.056% ± 0.047%** volume change with strong smoothing  
+✅ **Laplacian** is fastest and smoothest, but the **−0.92%** mean shrinkage makes it preview-only for measurements  
+✅ **Semantic-aware smoothing** substantially improves boundary preservation when labels are available  
+🎯 The report provides **clear selection guidelines** based on clinical goal
 
 **Bottom Line**:
-- Feature-preserving algorithms successfully balance smoothing and accuracy
-- Comprehensive evaluation framework validated across 16 samples
-- Clinical deployment feasible with current CPU implementation
-- GPU acceleration pathway identified for interactive performance
+- We can get high visual quality *and* clinically safe volumetrics, but algorithm choice matters.
+- The evaluation is complete, specific, and reproducible (400 measurements on n=20).
 
 **Thank You!**
 - Questions?
 - Live demo available
-- Code: github.com/shubham-mhaske/geometric_modelling_project
 - Contact: shubhammhaske@tamu.edu
 
 **Speaking Points**:
-- "To conclude, this project successfully demonstrates that feature-preserving mesh smoothing can achieve clinical-grade volume preservation."
-- "Information-Theoretic's perfect 100% volume preservation on MRI makes it immediately applicable for tumor monitoring."
-- "The discovery of Taubin's mesh-size dependency is critical for researchers using existing methods."
-- "All code and results are available on GitHub."
-- "I'm happy to take questions or provide a live demonstration."
+- "The takeaway: use Taubin for volumetrics, Laplacian for fast preview, and semantic-aware smoothing when you need boundary fidelity."
+- "All results and the full report are on the project webpage." 
 
 ---
 
@@ -452,11 +367,11 @@ Direction-dependent: parallel vs perpendicular to edges
 ### Q3: "Why are your novel algorithms so much slower?"
 **A**: "The computational complexity difference is significant. Laplacian smoothing is simple neighbor averaging: O(|V|) per iteration. Our novel algorithms require: (1) Geodesic Heat: pairwise distance computation O(|V|²) or heat kernel solving O(|V|log|V|), (2) Info-Theoretic: curvature histogram and entropy computation O(|V|log|V|), (3) Anisotropic: tensor decomposition per vertex O(|V|). However, this is solvable—GPU parallelization can achieve 10-50× speedup since these operations are highly parallelizable."
 
-### Q4: "Can you combine algorithms—like Taubin on MRI and Info-Theoretic on CT?"
-**A**: "Absolutely! That's one of our key recommendations. For clinical workflows, you could use: (1) Laplacian for real-time preview during interactive sessions (67 FPS), (2) Taubin for large MRI meshes where it performs well, (3) Info-Theoretic for small CT meshes and any case requiring maximum volume accuracy, (4) Geodesic Heat for final publication-quality visualizations. A smart hybrid system could even automatically select the algorithm based on mesh size and modality."
+### Q4: "Can you combine algorithms in a single workflow?"
+**A**: "Yes—this is a practical approach. In one workflow you might use: (1) Laplacian for instant preview while tuning parameters, (2) Taubin λ-μ for final volume-sensitive outputs, and (3) Geodesic Heat for publication-quality figures when small volume drift is acceptable. If segmentation labels are available, semantic-aware weights can be enabled to preserve sub-region boundaries. A system can automatically select the method based on the task (preview vs volumetrics vs visualization) and available metadata (e.g., labels)."
 
 ### Q5: "What about other anatomical structures—vessels, organs?"
-**A**: "Excellent question. Our evaluation focused on solid tumors and hemorrhages—relatively compact structures. Thin structures like vessels would be challenging for all algorithms. Anisotropic Tensor smoothing is specifically designed for this—it preserves vessel walls and thin membranes through its direction-dependent diffusion. However, validation on vascular structures would be necessary. Organs like liver or kidneys should behave similarly to brain tumors since they're large, solid structures."
+**A**: "Great question. Our quantitative validation is on brain tumor MRI meshes (BraTS), which are large, solid structures. Thin structures like vessels can be harder because aggressive smoothing can collapse geometry. Anisotropic/Tensor-style approaches are promising for these cases because they bias smoothing along surfaces while suppressing motion across sharp features, but they should be validated explicitly on vascular datasets as future work."
 
 ### Q6: "How does this compare to deep learning approaches?"
 **A**: "Deep learning methods like graph neural networks can learn optimal smoothing patterns from training data. The trade-off: (1) DL requires large labeled datasets and training time, (2) DL is a black box—hard to explain to clinicians why it made decisions, (3) Our geometric algorithms have mathematical guarantees (e.g., volume preservation is provable), (4) Our methods work on any mesh without training. However, DL could be used for parameter selection—training a network to predict optimal parameters given mesh features."
@@ -471,7 +386,7 @@ Direction-dependent: parallel vs perpendicular to edges
 **A**: "That requires a prospective clinical trial, which is beyond the scope of this project. However, I can cite supporting evidence: (1) Studies show 3D visualization improves surgical planning time by 30% (Journal of Neurosurgery, 2018), (2) Accurate volume measurements affect treatment decisions in 15-20% of cases (Neuro-Oncology, 2020), (3) RECIST requires <5% measurement variance—our 0.1% achieves this. A proper clinical trial would track: surgical time, blood loss, complication rates, patient outcomes comparing traditional vs our smoothed models."
 
 ### Q10: "What's novel here versus existing mesh smoothing research?"
-**A**: "Three key novelties: (1) **Comprehensive dual-modality evaluation**: Previous work tested on single modality or datasets. We validated across MRI and CT, discovering mesh-size dependency, (2) **Clinical-grade volume preservation**: We achieve 99.9% vs literature reporting 95-98%. That 1-4% matters clinically, (3) **Application-specific guidelines**: We don't claim one algorithm is 'best'—we provide decision criteria based on clinical use case. Most papers say 'our algorithm is better'—we say 'use this algorithm for this application, this one for that application.'"
+**A**: "Three key contributions: (1) **Clinically anchored evaluation** on 20 BraTS 2023 tumor meshes spanning 20× complexity—focused on volume drift, smoothness, quality, and runtime, (2) **Semantic-aware smoothing** that explicitly uses segmentation labels to reduce cross-boundary drift, and (3) **Clear application guidelines**: rather than claiming a single 'best' smoother, we provide actionable recommendations (Taubin for volumetrics, Laplacian for preview, Geodesic Heat for visualization, semantic mode when labels exist)."
 
 ---
 
@@ -480,7 +395,7 @@ Direction-dependent: parallel vs perpendicular to edges
 ### Color Scheme:
 - **Texas A&M Maroon**: #500000 (titles, headers)
 - **Gold**: #d4af37 (highlights, success metrics)
-- **Warning Red**: #cc0000 (Taubin failure on CT)
+- **Warning Red**: #cc0000 (risk indicator: Laplacian shrinkage for volumetrics)
 - **Success Green**: #2e7d32 (Info-Theoretic perfect preservation)
 - **Professional Blue**: #1976d2 (technical details)
 
@@ -527,20 +442,20 @@ Direction-dependent: parallel vs perpendicular to edges
 
 Imagine you're a neurosurgeon preparing for brain tumor removal. You have MRI scans, but what you really need is a smooth, accurate 3D model showing exactly where the tumor is and how it relates to critical brain structures. The challenge: converting those scans to 3D models produces noisy, artifact-filled meshes.
 
-My project solves this problem by developing advanced smoothing algorithms that reduce noise while preserving the anatomical features surgeons depend on. Over the next 12 minutes, I'll show you three novel algorithms I developed, validated across 16 medical imaging samples, and demonstrate a critical limitation in existing methods that hasn't been reported before.
+My project solves this problem by developing and evaluating smoothing algorithms that reduce noise while preserving the anatomical features surgeons depend on. Over the next 12 minutes, I'll show you the algorithms, the quantitative results on 20 BraTS 2023 tumor meshes spanning a 20× complexity range, and the practical conclusions about which method to use for which clinical goal.
 
 Let's begin with the problem statement..."
 
 ### Closing (Last 45 seconds):
 "To conclude, this project makes three key contributions:
 
-First, I developed three mathematically-grounded smoothing algorithms that achieve clinical-grade volume preservation—99.9% overall, with Information-Theoretic achieving perfect 100% on MRI scans.
+First, I implemented and compared five smoothing algorithms (two classical baselines and three feature-aware methods) with a focus on medical volumetrics.
 
-Second, I discovered and quantified a critical limitation in the widely-used Taubin algorithm: it loses 22.3% volume on small CT meshes while performing well on large MRI meshes. This mesh-size dependency hasn't been reported before and has important implications for anyone using Taubin smoothing in medical applications.
+Second, I validated these methods on 20 BraTS 2023 tumor meshes and quantified the key trade-off: Laplacian is extremely fast and visually smooth, but it shrinks volume; Taubin achieves near-zero mean volume drift while still providing strong smoothing.
 
-Third, I provide practical, application-specific recommendations so clinicians can select the right algorithm for their specific use case—whether that's tumor monitoring, surgical planning, or research visualization.
+Third, I show that semantic-aware smoothing (using segmentation labels) can significantly reduce boundary drift when labels are available, making smoothing more clinically faithful.
 
-All code, data, and results are available on GitHub, and I've built an interactive web application for hands-on exploration.
+All code, data, and results are available in the project repository, and I've built an interactive Streamlit web application for hands-on exploration.
 
 Thank you for your attention. I'm happy to answer any questions, and I can provide a live demonstration if time permits."
 
@@ -587,7 +502,7 @@ Based on typical presentation rubrics:
 ## 📁 Supporting Materials to Bring
 
 1. **Handout (1 page, double-sided)**:
-   - Front: Key results tables (MRI + CT)
+  - Front: Key results table (n=20 BraTS) + 1 trade-off plot
    - Back: Algorithm selection flowchart + contact info
 
 2. **Backup Materials**:
@@ -596,16 +511,16 @@ Based on typical presentation rubrics:
    - Business cards with GitHub/email
 
 3. **Demo Backup**:
-   - Screen recording of Streamlit app (2 minutes)
+  - Screen recording of Streamlit demo (2 minutes)
    - Static high-res images of key visualizations
    - Pre-computed results if live computation fails
 
 ---
 
 **Good luck with your presentation! You have excellent results to present. Remember:**
-- **Be confident** - your work is solid with 16-sample validation
+- **Be confident** - your work is solid with n=20 validation
 - **Tell a story** - problem → solution → validation → impact
-- **Highlight novelty** - Taubin mesh-size dependency is a major discovery
+- **Highlight novelty** - semantic-aware smoothing + clinically anchored evaluation + clear guidelines
 - **Show enthusiasm** - this is clinically impactful work
 - **Practice timing** - aim for 11-12 minutes to allow Q&A buffer
 

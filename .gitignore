@@ -61,7 +61,17 @@ outputs/figures/report/*
 config.json
 
 # Speaker notes (private)
-SPEAKER_SCRIPT.md
+SPEAKER_SCRIPT.*
+
+# Presentation materials (often large / personal / generated)
+academic_presentation.html
+docs/presentations/
+website/presentation/
+
+# Presentation generation scripts (optional to keep private)
+scripts/generate_academic_presentation.py
+scripts/generate_presentation_data.py
+scripts/generate_presentation_figures.py
 
 # Streamlit
 .streamlit/
